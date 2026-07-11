@@ -1,42 +1,42 @@
 [
   {
-    "id": "task_001",
+    "task_id": "task_001",
     "category": "factual_knowledge",
-    "prompt": "What is the capital of France?"
+    "instruction": "What is the capital of France?"
   },
   {
-    "id": "task_002",
+    "task_id": "task_002",
     "category": "math",
-    "prompt": "Solve for x: 2x + 10 = 30"
+    "instruction": "Solve for x: 2x + 10 = 30"
   },
   {
-    "id": "task_003",
+    "task_id": "task_003",
     "category": "sentiment_classification",
-    "prompt": "Classify the sentiment of this text as positive, negative, or neutral: 'The product is amazing and I love it!'"
+    "instruction": "The product is amazing and I love it!"
   },
   {
-    "id": "task_004",
+    "task_id": "task_004",
     "category": "text_summarization",
-    "prompt": "Summarize the following text in one or two sentences: 'Artificial intelligence has transformed numerous industries over the past decade. From healthcare diagnostics that can detect diseases earlier than human physicians, to autonomous vehicles navigating complex urban environments, AI systems are becoming integral to modern life. However, this rapid advancement has also raised significant ethical concerns about privacy, job displacement, and the concentration of power among a few large technology companies. Researchers and policymakers worldwide are now working to establish frameworks that ensure AI development benefits humanity broadly while minimizing potential harms.'"
+    "instruction": "Summarize the following text in one sentence: Artificial intelligence has transformed numerous industries over the past decade. From healthcare diagnostics that can detect diseases earlier than human physicians, to autonomous vehicles navigating complex urban environments, AI systems are becoming integral to modern life. However, this rapid advancement has also raised significant ethical concerns about privacy, job displacement, and the concentration of power among a few large technology companies."
   },
   {
-    "id": "task_005",
+    "task_id": "task_005",
     "category": "ner",
-    "prompt": "Extract all named entities (persons, organizations, locations) from this text: 'Barack Obama visited the White House in Washington D.C. and met with representatives from the United Nations.'"
+    "instruction": "Extract all named entities (persons, organizations, locations) from this text: Barack Obama visited the White House in Washington D.C. and met with representatives from the United Nations."
   },
   {
-    "id": "task_006",
+    "task_id": "task_006",
     "category": "code_debugging",
-    "prompt": "Find and fix the bug in this Python code:\n\ndef calculate_average(numbers):\n    total = 0\n    for num in numbers:\n        total += num\n    average = total / len(numbers)\n    return average\n\nresult = calculate_average([])\nprint(result)"
+    "instruction": "Find and fix the bug in this Python code:\n\ndef calculate_average(numbers):\n    total = 0\n    for num in numbers:\n        total += num\n    average = total / len(numbers)\n    return average\n\nresult = calculate_average([])\nprint(result)"
   },
   {
-    "id": "task_007",
+    "task_id": "task_007",
     "category": "logical_reasoning",
-    "prompt": "All cats are mammals. All mammals are animals. Whiskers is a cat. Is Whiskers an animal? Explain your reasoning step by step."
+    "instruction": "All cats are mammals. All mammals are animals. Whiskers is a cat. Is Whiskers an animal? Explain your reasoning step by step."
   },
   {
-    "id": "task_008",
+    "task_id": "task_008",
     "category": "code_generation",
-    "prompt": "Write a Python function to check if a number is prime."
+    "instruction": "Write a Python function to check if a number is prime. Return True if prime, False otherwise."
   }
 ]
