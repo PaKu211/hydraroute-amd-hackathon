@@ -1,10 +1,10 @@
 """
-Router module for HydraRoute Agent.
-Determines which tier to use for each task and implements fallback chains.
+Router module for HydraRoute Agent (v3 - Dynamic Heuristic Difficulty Estimation).
+Determines the target execution tier dynamically using category heuristics and prompt complexity indicators.
+Implements fallback chains: Tier 0 -> Tier 1 -> Tier 2.
 """
 
 import logging
-
 from openai import OpenAI
 
 from src.config import Config, CATEGORY_CONFIG, DEFAULT_CATEGORY_CONFIG
@@ -35,7 +35,7 @@ CATEGORY_ALIASES: dict[str, str] = {
     "debugging": "code_debugging",
     "debug": "code_debugging",
     "logical_reasoning": "logical_reasoning",
-    "deductive_reasoning": "deductive_reasoning",
+    "deductive_reasoning": "logical_reasoning",
     "reasoning": "logical_reasoning",
     "logic": "logical_reasoning",
     "code_generation": "code_generation",
@@ -71,6 +71,58 @@ def get_category_config(category: str) -> dict:
     return CATEGORY_CONFIG.get(normalized, DEFAULT_CATEGORY_CONFIG)
 
 
+def estimate_difficulty(instruction: str, category: str) -> int:
+    """Dynamically estimate prompt difficulty using local heuristics.
+
+    Returns:
+        1: Tier 1 (Small model is sufficient)
+        2: Tier 2 (Large reasoning model required)
+    """
+    text = instruction.lower()
+    word_count = len(text.split())
+
+    # Indicators of high logical/debugging complexity
+    complex_indicators = [
+        "debug", "fix the bug", "traceback", "runtimeerror", "syntaxerror",
+        "logical puzzle", "explain step by step", "prove", "mathematical proof",
+        "write a class", "implement a complex", "algorithm", "recursive", "concurrency",
+        "nested", "complex", "o(n", "space complexity"
+    ]
+    has_indicators = any(ind in text for ind in complex_indicators)
+
+    # Coding structural characters (often indicates code block analysis)
+    has_code_structure = "```" in text or "def " in text or "class " in text or "import " in text
+
+    # Score calculation
+    score = 0
+    if word_count > 80:
+        score += 2
+    elif word_count > 40:
+        score += 1
+
+    if has_indicators:
+        score += 2
+    if has_code_structure:
+        score += 3
+
+    # Dynamic adjustment
+    if category in ("code_generation", "code_debugging", "logical_reasoning"):
+        # Default is Tier 2, but downgrade to Tier 1 if extremely short and simple
+        if score <= 1 and word_count < 25:
+            logger.info("Task classified as SIMPLE reasoning (score=%d), downgrading to Tier 1", score)
+            return 1
+        return 2
+
+    if category in ("factual_knowledge", "text_summarization", "ner", "sentiment_classification"):
+        # Default is Tier 1, but escalate to Tier 2 if extremely long or complex
+        if score >= 4:
+            logger.info("Task classified as COMPLEX context (score=%d), escalating to Tier 2", score)
+            return 2
+        return 1
+
+    return 1
+
+
 def route_task(
     task: dict,
     config: Config,
@@ -93,17 +145,13 @@ def route_task(
     category = task["category"]
     instruction = task["instruction"]
 
-    cat_config = get_category_config(category)
-    target_tier = cat_config.get("tier", 1)
+    normalized_cat = normalize_category(category)
+    cat_config = get_category_config(normalized_cat)
+    config_tier = cat_config.get("tier", 1)
 
-    logger.info(
-        "Routing task %s [%s] -> tier %d", task_id, category, target_tier
-    )
-
-    answer: str | None = None
-
-    # ── Tier 0: Local execution (math) ──
-    if target_tier == 0:
+    # 1. Math tasks go to Tier 0 (local execution)
+    if config_tier == 0:
+        logger.info("Routing task %s [%s] -> Tier 0 (Local Math Solver)", task_id, category)
         try:
             answer = tier_zero.execute(instruction)
             if answer is not None:
@@ -113,16 +161,23 @@ def route_task(
         except Exception as e:
             logger.warning("Tier 0 failed for task %s: %s", task_id, e)
 
-        # Fallback: Tier 0 -> Tier 1
-        logger.info("Tier 0 fallback -> Tier 1 for task %s", task_id)
-        # Use math-specific config for the API call
-        math_api_config = {
+        # Fallback: Tier 0 -> Tier 1 (or Tier 2 if overall difficulty is high)
+        logger.info("Tier 0 fallback initiated for task %s", task_id)
+        # Check difficulty of the math problem for API fallback
+        fallback_tier = estimate_difficulty(instruction, normalized_cat)
+        target_tier = fallback_tier
+        # Setup fallback prompt config
+        cat_config = {
             "system_prompt": "Solve this math problem. Give only the final answer.",
             "max_tokens": cat_config.get("max_tokens", 150),
             "temperature": 0.0,
         }
-        target_tier = 1
-        cat_config = math_api_config
+    else:
+        # 2. Non-math tasks: Dynamically determine tier using Heuristic Difficulty Estimator
+        target_tier = estimate_difficulty(instruction, normalized_cat)
+        logger.info("Routing task %s [%s] -> Tier %d (Estimated)", task_id, category, target_tier)
+
+    answer: str | None = None
 
     # ── Tier 1: Small model ──
     if target_tier <= 1 and config.small_model:
@@ -146,10 +201,8 @@ def route_task(
     # ── Tier 2: Large model ──
     if config.large_model:
         try:
-            # For Tier 2 fallbacks, use the original category config if available
-            t2_config = CATEGORY_CONFIG.get(
-                normalize_category(category), cat_config
-            )
+            # Use original category config parameters for the Tier 2 execution
+            t2_config = CATEGORY_CONFIG.get(normalized_cat, cat_config)
             answer = tier_two.execute(
                 client=client,
                 model=config.large_model,

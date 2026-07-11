@@ -75,7 +75,7 @@ def process_single_task(
         # Check cache first (zero tokens!)
         cache = InMemoryCache()
         instruction = task.get("instruction", "")
-        cached = cache.get(instruction)
+        cached = cache.get(instruction, category)
         if cached is not None:
             elapsed = time.time() - task_start
             logger.info("Task %s: CACHE HIT in %.2fs", task_id, elapsed)
@@ -86,7 +86,7 @@ def process_single_task(
 
         # Store in cache for potential duplicates
         if answer:
-            cache.set(instruction, answer)
+            cache.set(instruction, answer, category)
 
         elapsed = time.time() - task_start
         logger.info("Task %s completed in %.2fs", task_id, elapsed)
