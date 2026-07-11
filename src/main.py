@@ -228,10 +228,15 @@ def main() -> None:
     TokenTracker().print_summary()
 
     cache_stats = InMemoryCache().stats()
+    exact_hits = cache_stats.get("exact_hits", 0)
+    fuzzy_hits = cache_stats.get("fuzzy_hits", 0)
+    total_hits = exact_hits + fuzzy_hits
     logger.info(
-        "Cache stats: %d entries, %d hits, %d misses (%.1f%% hit rate)",
+        "Cache stats: %d entries, %d total hits (exact=%d, fuzzy=%d), %d misses (%.1f%% hit rate)",
         cache_stats["size"],
-        cache_stats["hits"],
+        total_hits,
+        exact_hits,
+        fuzzy_hits,
         cache_stats["misses"],
         cache_stats["hit_rate_pct"],
     )
