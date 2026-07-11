@@ -183,6 +183,13 @@ def _is_valid_tier_one_response(answer: str, category: str) -> bool:
             logger.warning("Tier 1 math output is too verbose. Escalating...")
             return False
 
+    # 5. Logical/Deductive reasoning tasks
+    if category in ("logical_reasoning", "deductive_reasoning"):
+        # If the task requests step-by-step or explanation, ensure the output has sufficient length
+        if len(cleaned.split()) < 10:
+            logger.warning("Tier 1 reasoning output is too short. Escalating...")
+            return False
+
     return True
 
 
