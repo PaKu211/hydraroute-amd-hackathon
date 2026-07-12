@@ -63,6 +63,11 @@ def execute(
                 "truncate"
             )
 
+            # OpenRouter-specific: verbose output suppression + reasoning exclusion
+            params.setdefault("extra_body", {})["verbosity"] = "low"
+            if any(m in model_lower for m in ["gemma"]):
+                params["extra_body"]["reasoning"] = {"exclude": True}
+
             # Disable thinking for reasoning models (saves reasoning tokens)
             if any(m in model_lower for m in ["deepseek", "qwen", "r1"]):
                 params.setdefault("extra_body", {})["thinking"] = {"type": "disabled"}
