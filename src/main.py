@@ -71,6 +71,21 @@ def process_single_task(
     logger.info("── Task %d/%d: %s [%s] ──", index, total, task_id, category)
     task_start = time.time()
 
+    # Batched task: multiple subtasks sharing context
+    if "_subtasks" in task:
+        from src.router import route_batch
+
+        batch_results = route_batch(task, config, client)
+        elapsed = time.time() - task_start
+        logger.info(
+            "Batch %s (%d subtasks) completed in %.2fs",
+            task_id,
+            len(task["_subtasks"]),
+            elapsed,
+        )
+        # Return first subtask result for ordering; individual results expand later
+        return batch_results if isinstance(batch_results, list) else [batch_results]
+
     try:
         # Check cache first (zero tokens!)
         cache = InMemoryCache()
@@ -161,6 +176,115 @@ def process_tasks_sequential(
         process_single_task(task, config, client, i + 1, total)
         for i, task in enumerate(tasks)
     ]
+
+
+def _batch_same_category(
+    tasks: list[dict],
+    logger,
+) -> list[dict]:
+    """Group same-category tasks with shared instruction context into batched calls.
+
+    Detects tasks whose instructions share a long common substring (>80 chars),
+    typically indicating they reference the same source text. Batched tasks share
+    the system prompt across N questions, saving input tokens.
+
+    Each batched task is a synthetic task with _subtasks list. The router handles
+    batched tasks by sending a combined prompt and parsing the JSON array response.
+    """
+    # Build list of (task, normalized_category, instruction_lower)
+    processed = []
+    for t in tasks:
+        cat = str(t.get("category", "")).strip().lower()
+        inst = str(t.get("instruction", "")).strip()
+        processed.append((t, cat, inst))
+
+    # Group by category first
+    from collections import defaultdict
+
+    by_cat: dict[str, list[tuple[dict, str, str]]] = defaultdict(list)
+    for t, cat, inst in processed:
+        by_cat[cat].append((t, cat, inst))
+
+    result: list[dict] = []
+    for cat, group in by_cat.items():
+        if len(group) < 2:
+            result.append(group[0][0])
+            continue
+
+        # Within same category, find pairs sharing long substrings
+        batched_set = set()
+        for i in range(len(group)):
+            if i in batched_set:
+                continue
+            t_i, _, inst_i = group[i]
+            best_match = None
+            best_substr = ""
+
+            for j in range(i + 1, len(group)):
+                if j in batched_set:
+                    continue
+                t_j, _, inst_j = group[j]
+                # Find longest common substring
+                shared = _longest_common_substring(inst_i.lower(), inst_j.lower())
+                if len(shared) > len(best_substr):
+                    best_substr = shared
+                    best_match = j
+
+            if best_match is not None and len(best_substr) > 80:
+                # Create batched task
+                t_j, _, inst_j = group[best_match]
+                batched_set.add(i)
+                batched_set.add(best_match)
+                from src.router import normalize_category
+
+                norm_cat = normalize_category(cat)
+                batched_task = {
+                    "task_id": f"batch_{cat}_{len(result)}",
+                    "category": cat,
+                    "instruction": inst_i,
+                    "_subtasks": [t_i, t_j],
+                    "_shared_context": best_substr,
+                }
+                result.append(batched_task)
+                logger.info(
+                    "Session Dedup: batched 2 tasks [%s] sharing %d chars",
+                    cat,
+                    len(best_substr),
+                )
+            else:
+                result.append(t_i)
+
+        # Add remaining unbatched tasks
+        for idx in range(len(group)):
+            if idx not in batched_set and idx not in [
+                i
+                for i, _ in enumerate(group)
+                if group[i][0]
+                in [r for r in result if not isinstance(r.get("_subtasks"), list)]
+            ]:
+                result.append(group[idx][0])
+
+    return result
+
+
+def _longest_common_substring(a: str, b: str) -> str:
+    """Find the longest common substring between two strings."""
+    if not a or not b:
+        return ""
+    m, n = len(a), len(b)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    max_len = 0
+    end_pos = 0
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if a[i - 1] == b[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+                if dp[i][j] > max_len:
+                    max_len = dp[i][j]
+                    end_pos = i
+            else:
+                dp[i][j] = 0
+    return a[end_pos - max_len : end_pos]
 
 
 def model_health_check(
@@ -274,8 +398,13 @@ def main() -> None:
         dedup_saved,
     )
 
+    # ── Session Dedup: batch compatible tasks to share system prompt ──
+    batched_tasks = _batch_same_category(unique_tasks, logger)
     logger.info(
-        "Processing %d unique tasks (concurrent, max 3 workers)", len(unique_tasks)
+        "Processing %d task(s) (%d individual + %d batched groups)",
+        len(batched_tasks),
+        sum(1 for t in batched_tasks if not isinstance(t.get("_subtasks"), list)),
+        sum(1 for t in batched_tasks if isinstance(t.get("_subtasks"), list)),
     )
 
     # ── 6. Process unique tasks with concurrency ──
@@ -292,7 +421,14 @@ def main() -> None:
         unique_results = process_tasks_sequential(unique_tasks, config, client)
 
     # ── Expand unique results back to original tasks ──
-    unique_results_map = {res["task_id"]: res["answer"] for res in unique_results}
+    # Flatten: batched tasks return lists, individual tasks return dicts
+    flat_results: list[dict] = []
+    for r in unique_results:
+        if isinstance(r, list):
+            flat_results.extend(r)
+        else:
+            flat_results.append(r)
+    unique_results_map = {res["task_id"]: res["answer"] for res in flat_results}
     results = []
     for task in tasks:
         inst = task.get("instruction", "").strip()

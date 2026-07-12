@@ -5,9 +5,11 @@ Implements fallback chains: Tier 0 -> Tier 1 -> Tier 2.
 """
 
 import logging
+import re
+
 from openai import OpenAI
 
-from src.config import Config, CATEGORY_CONFIG, DEFAULT_CATEGORY_CONFIG
+from src.config import Config, CATEGORY_CONFIG, DEFAULT_CATEGORY_CONFIG, CACHE_PREFIX
 from src.token_tracker import TokenTracker
 from src.tiers import tier_zero, tier_one, tier_two
 
@@ -249,6 +251,145 @@ def _is_valid_tier_one_response(answer: str, category: str) -> bool:
     return True
 
 
+def route_batch(
+    batched_task: dict,
+    config: Config,
+    client: OpenAI,
+) -> list[dict]:
+    """Route a batched task: multiple questions sharing context, single API call.
+
+    batched_task has _subtasks list and optionally _shared_context.
+    Sends combined prompt, parses JSON array response, maps answers to subtasks.
+    """
+    subtasks = batched_task.get("_subtasks", [])
+    if not subtasks:
+        return [
+            {
+                "task_id": batched_task.get("task_id"),
+                "answer": str(batched_task.get("answer", "")),
+            }
+        ]
+
+    category = batched_task.get("category", "unknown")
+    shared_context = batched_task.get("_shared_context", "")
+
+    # Build numbered questions
+    questions = []
+    for i, st in enumerate(subtasks, 1):
+        inst = str(st.get("instruction", "")).strip()
+        # Remove the shared context from the instruction to avoid redundancy
+        if shared_context and shared_context in inst:
+            inst = inst.replace(shared_context, "").strip().strip(".,;: ")
+        questions.append(f"{i}. {inst}")
+
+    combined_prompt = (
+        f"Answer all {len(questions)} questions below based on the shared context. "
+        f"Return a JSON array of answers in order.\n\n"
+        f"Shared context: {shared_context}\n\n"
+        f"Questions:\n" + "\n".join(questions)
+    )
+
+    logger.info(
+        "Batched task [%s]: %d subtasks, combined prompt %d chars",
+        category,
+        len(subtasks),
+        len(combined_prompt),
+    )
+
+    model = config.get_model_for_category(batched_task.get("category", ""))
+    if not model:
+        model = config.large_model
+    if not model:
+        return [
+            {"task_id": st["task_id"], "answer": "I could not determine the answer."}
+            for st in subtasks
+        ]
+
+    cat_config = get_category_config(category)
+    system_prompt = cat_config.get("system_prompt", "Answer concisely.")
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt + " Return answers as a JSON array.",
+                },
+                {"role": "user", "content": combined_prompt},
+            ],
+            max_tokens=cat_config.get("max_tokens", 300) * len(subtasks),
+            temperature=0.0,
+            extra_body={
+                "context_length_exceeded_behavior": "truncate",
+                "thinking": {"type": "disabled"},
+            },
+        )
+        raw = resp.choices[0].message.content or ""
+        import json
+
+        # Parse JSON array from response
+        answers = _extract_json_array(raw)
+        if answers and len(answers) == len(subtasks):
+            results = []
+            for st, ans in zip(subtasks, answers):
+                results.append({"task_id": st["task_id"], "answer": str(ans)})
+                logger.debug("Batched subtask %s: [%s]", st["task_id"], str(ans)[:80])
+            # Record tokens once for the batch
+            from src.token_tracker import TokenTracker
+
+            if resp.usage:
+                TokenTracker().record(
+                    task_id=f"batch_{category}",
+                    model=model,
+                    prompt_tokens=resp.usage.prompt_tokens or 0,
+                    completion_tokens=resp.usage.completion_tokens or 0,
+                )
+            return results
+        else:
+            logger.warning(
+                "Batched response parse failed or size mismatch, falling back to individual routing"
+            )
+    except Exception as e:
+        logger.warning(
+            "Batched call failed (%s), falling back to individual routing", e
+        )
+
+    # Fallback: process each subtask individually
+    return [route_task(st, config, client) for st in subtasks]
+
+
+def _extract_json_array(text: str) -> list | None:
+    """Extract a JSON array from model response text."""
+    if not text:
+        return None
+    import json
+
+    # Try direct parse
+    text = text.strip()
+    try:
+        return json.loads(text) if isinstance(json.loads(text), list) else None
+    except json.JSONDecodeError:
+        pass
+    # Try extracting from markdown code block
+    m = __import__("re").search(
+        r"```(?:json)?\s*(\[.*?\])\s*```", text, __import__("re").DOTALL
+    )
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Try extracting [...] pattern
+    m = __import__("re").search(r"(\[.*?\])", text, __import__("re").DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def route_task(
     task: dict,
     config: Config,
@@ -304,6 +445,60 @@ def route_task(
     except Exception as e:
         logger.warning("Prompt compression failed: %s", e)
         instruction_optimized = instruction
+
+    # ── SymPy-LLM Symbiosis: LLM translates word problem → SymPy solves locally ──
+    # Zero-risk: LLM only generates equation string, SymPy guarantees correct solution
+    if normalized_cat in ("math", "mathematical_reasoning") and config.large_model:
+        logger.info("Task %s: Trying SymPy-LLM Symbiosis", task_id)
+        try:
+            eq_prompt = (
+                "Translate this math word problem into a single valid Python SymPy equation "
+                "string. DO NOT solve it. Output ONLY the equation string, nothing else.\n\n"
+                f"Word problem: {instruction}"
+            )
+            eq_resp = client.chat.completions.create(
+                model=config.large_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"{CACHE_PREFIX} | math | Translate to SymPy equation. Output ONLY the equation string.",
+                    },
+                    {"role": "user", "content": eq_prompt},
+                ],
+                max_tokens=100,
+                temperature=0.0,
+                extra_body={"context_length_exceeded_behavior": "truncate"},
+            )
+            eq_raw = eq_resp.choices[0].message.content
+            if not eq_raw or not eq_raw.strip():
+                eq_raw = getattr(eq_resp.choices[0].message, "reasoning_content", None)
+            if eq_raw:
+                # Clean the equation string: strip markdown, backticks, code fences
+                eq_clean = eq_raw.strip()
+                eq_clean = (
+                    re.sub(r"```(?:python|sympy)?", "", eq_clean)
+                    .replace("```", "")
+                    .strip()
+                )
+                eq_clean = re.sub(r"^[^a-zA-Z0-9(=]+", "", eq_clean)  # leading noise
+                eq_clean = eq_clean.rstrip(".,; ")
+                logger.info("SymPy-LLM equation: %s", eq_clean)
+                sympy_answer = tier_zero.solve_equation_string(eq_clean)
+                if sympy_answer is not None:
+                    TokenTracker().record(
+                        task_id=task_id,
+                        model=config.large_model,
+                        prompt_tokens=eq_resp.usage.prompt_tokens or 0,
+                        completion_tokens=eq_resp.usage.completion_tokens or 0,
+                    )
+                    logger.info(
+                        "Task %s solved by SymPy-LLM Symbiosis: %s",
+                        task_id,
+                        sympy_answer,
+                    )
+                    return sympy_answer
+        except Exception as e:
+            logger.warning("SymPy-LLM Symbiosis failed for task %s: %s", task_id, e)
 
     # ── Tier 1: Category-appropriate model ──
     tier1_model = config.get_model_for_category(normalized_cat)
@@ -385,8 +580,6 @@ def route_task(
                     "code_debugging",
                     "code_generation",
                 ):
-                    from src.config import CACHE_PREFIX
-
                     judge_prompt = (
                         f"Does this answer logically solve the prompt? "
                         f"Reply only YES or NO.\n\n"

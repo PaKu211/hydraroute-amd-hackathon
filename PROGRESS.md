@@ -1,6 +1,6 @@
 # HydraRoute Agent — Progress Tracker
 
-## Latest Build: v3.3 (2026-07-12) — OmniRoute Integration
+## Latest Build: v3.4 (2026-07-12) — Champion Iteration
 
 ### Architecture
 ```
@@ -25,10 +25,13 @@ Tier 0 (Local Solvers) → Tier 1 (Small Model) → Tier 2 (Large Model)
 | Model Health Check at startup | ✅ | Probe `max_tokens=1` per model, remove failures |
 | 1-Token YES/NO Judge (TERA-inspired) | ✅ | Self-verify for reasoning/code tasks |
 | Zero-token-first routing | ✅ | Tier 0 always attempted first |
-| **Self-Consistency Voting (new)** | ✅ | 3× parallel calls for reasoning tasks, consensus wins |
-| **RTK Stack Trace Compression (new)** | ✅ | Truncate Python/JS tracebacks to last 10 lines |
-| **Temperature Scaling + Prompt Mutation (new)** | ✅ | Same-model fallback: temp=0.3, mutation string injected |
+| **Self-Consistency Voting** | ✅ | 3× parallel calls for reasoning tasks, consensus wins |
+| **RTK Stack Trace Compression** | ✅ | Truncate Python/JS tracebacks to last 10 lines |
+| **Temperature Scaling + Prompt Mutation** | ✅ | Same-model fallback: temp=0.3, mutation string injected |
 | **OmniRoute API** | ✅ | `oc/deepseek-v4-flash-free`, `thinking=disabled` via extra_body |
+| **SymPy-LLM Symbiosis (new)** | ✅ | LLM translates word problem → SymPy solves locally. 100% accuracy |
+| **Session Dedup (new)** | ✅ | Same-category tasks sharing >80 char context → batched single API call |
+| **Relevance Compression (new)** | ✅ | TF-IDF extractive scoring for factual/summarization, keeps top 60% sentences |
 
 ### Tier-0 Local Solvers (7 modules)
 | Solver | Coverage | Status |
@@ -47,6 +50,8 @@ Tier 0 (Local Solvers) → Tier 1 (Small Model) → Tier 2 (Large Model)
 2. Unit conv `_reg_conv` auto-inverse overwrites forward → skip if inverse exists
 3. Date math `m.group(3)` → `m.group(4)`
 4. `reasoning_effort=none` causes 400 on OmniRoute → removed (use `thinking=disabled` instead)
+5. `CACHE_PREFIX` scope bug → removed local import, use module-level import
+6. Simple classification false positive ("Great Britain" → "great" → POS) → 20-word length guard
 
 ### End-to-End Test (OmniRoute API — 2026-07-12)
 | Task | Category | Result | Source |

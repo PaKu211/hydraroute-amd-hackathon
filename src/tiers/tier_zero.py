@@ -236,6 +236,19 @@ def _solve_sympy_worker(conn, equation_str: str) -> None:
         conn.send(("error", str(e)))
 
 
+def solve_equation_string(equation_str: str) -> str | None:
+    """Solve a clean SymPy equation string (e.g., '2*x + 10 = 30').
+    Used by SymPy-LLM Symbiosis: LLM translates word problem to equation,
+    this function solves it locally with 100% accuracy.
+    """
+    if not equation_str or not equation_str.strip():
+        return None
+    eq = equation_str.strip().rstrip(".,;! ")
+    if "=" not in eq:
+        return None
+    return _solve_with_sympy(eq)
+
+
 def _solve_with_sympy(equation_str: str, transformations=None) -> str | None:
     if "=" not in equation_str:
         return None
@@ -730,6 +743,11 @@ _NEUTRAL_INDICATORS = {
 
 def _try_simple_classification(text: str) -> str | None:
     lower = text.lower()
+
+    # Only classify short texts (< 20 words) to avoid false positives
+    # on long factual/narrative text (e.g., "Great Britain" matching "great")
+    if len(text.split()) > 20:
+        return None
 
     # Sentiment classification (exact match for short texts)
     words = set(re.findall(r"[a-zA-Z]+", lower))

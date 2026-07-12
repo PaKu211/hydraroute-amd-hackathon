@@ -126,6 +126,83 @@ class PromptCompressor:
 
         return text
 
+    def compress_relevance(self, text: str, instruction: str = "") -> str:
+        """[Relevance] Extractive sentence scoring: keep only top-k sentences by TF-IDF overlap.
+
+        Scores each sentence against the instruction/task description.
+        Keeps top 60% of sentences by relevance score.
+        Pure Python (math + Counter), no external deps.
+        Only applies when text has 5+ sentences and instruction is non-empty.
+        """
+        if not text or not instruction or len(text) < 200:
+            return text
+
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        if len(sentences) < 5:
+            return text
+
+        from collections import Counter
+        import math
+
+        # Instruction word frequency (query)
+        query_words = set(
+            w.lower().strip(".,;!?\"'") for w in instruction.split() if len(w) > 2
+        )
+        if not query_words:
+            return text
+
+        # Total words in document
+        all_words = []
+        for s in sentences:
+            all_words.extend(w.lower().strip(".,;!?\"'") for w in s.split())
+        doc_word_count = Counter(all_words)
+        n_total = len(all_words)
+
+        # Score each sentence
+        scored: list[tuple[float, int, str]] = []
+        for idx, sent in enumerate(sentences):
+            sent_lower = sent.lower()
+            sent_words = [w.strip(".,;!?\"'") for w in sent.split()]
+            sent_word_count = len(sent_words)
+            if sent_word_count == 0:
+                continue
+
+            # TF-IDF-like score: sum of (term freq in sentence) * log(total / doc freq)
+            sent_tf = Counter(w for w in sent_words if len(w) > 2)
+            score = 0.0
+            for qw in query_words:
+                if qw in sent_tf:
+                    tf = sent_tf[qw] / sent_word_count
+                    df = doc_word_count.get(qw, 1)
+                    idf = math.log(n_total / (df + 1)) + 1
+                    score += tf * idf
+
+            # Bonus for sentences near the beginning
+            position_bonus = max(0, 1.0 - idx / len(sentences) * 0.3)
+            scored.append((score * position_bonus, idx, sent))
+
+        if not scored:
+            return text
+
+        # Sort by score descending, keep top 60%
+        scored.sort(key=lambda x: -x[0])
+        keep_count = max(3, int(len(scored) * 0.6))
+        kept_indices = sorted(s[1] for s in scored[:keep_count])
+
+        compressed = " ".join(sentences[i] for i in kept_indices)
+        saved = len(text) - len(compressed)
+        if saved > 50:
+            logger.info(
+                "Relevance compressed: %d -> %d chars (-%d, %.0f%%), kept %d/%d sentences",
+                len(text),
+                len(compressed),
+                saved,
+                saved / len(text) * 100,
+                keep_count,
+                len(sentences),
+            )
+        return compressed
+
     def compress_headroom(self, data: Union[str, dict, list]) -> str:
         """[Headroom] Minimizes JSON payload by stripping spaces around delimiters."""
         if isinstance(data, (dict, list)):
@@ -161,6 +238,10 @@ class PromptCompressor:
         # 3. RTK stack trace truncation - Only for code tasks
         if category in ("code_debugging", "code_generation", "debug"):
             compressed = self.compress_rtk(compressed)
+
+        # 4. Relevance compression - extractive sentence scoring for long-context tasks
+        if category in ("text_summarization", "factual_knowledge"):
+            compressed = self.compress_relevance(compressed, instruction)
 
         compressed_len = len(compressed)
         saving_pct = (
