@@ -21,25 +21,24 @@ try:
     url = "https://github.com/ggml-org/llama.cpp/releases/download/b9969/llama-b9969-bin-ubuntu-x64.tar.gz"
     urllib.request.urlretrieve(url, "/tmp/llama.tar.gz")
     with tarfile.open("/tmp/llama.tar.gz") as tf:
-        found = False
-        for m in tf.getmembers():
-            name = m.name.lower()
-            if any(x in name for x in ["/main", "/llama-cli", "/llama_inference"]):
-                if not m.isdir():
-                    tf.extract(m, BIN_DIR)
-                    src = os.path.join(BIN_DIR, m.name)
+        import re
+
+        members = [m for m in tf.getmembers() if not m.isdir()]
+        for m in members:
+            tf.extract(m, BIN_DIR)
+        # Find and rename the binary to llama-cli
+        for root_dir, dirs, files in os.walk(BIN_DIR):
+            for f in files:
+                if f in ("main", "llama-cli", "llama_inference"):
+                    src = os.path.join(root_dir, f)
                     dst = os.path.join(BIN_DIR, "llama-cli")
                     if src != dst:
-                        os.rename(src, dst)
-                    os.chmod(dst, 0o755)
-                    print(f"llama-cli ready from: {m.name}")
-                    found = True
-                    break
-        if not found:
-            import glob
+                        import shutil
 
-            all_files = [m.name for m in tf.getmembers() if not m.isdir()]
-            print(f"Files in archive: {all_files[:20]}")
+                        shutil.copy2(src, dst)
+                    os.chmod(dst, 0o755)
+                    print(f"llama-cli ready (from {f})")
+                    break
     os.remove("/tmp/llama.tar.gz")
 except Exception as e:
     print(f"llama-cli download failed: {e}", file=sys.stderr)
