@@ -125,29 +125,29 @@ python -m src.main -q "Fix: def add(a b): return a+b"
 
 **Why use HydraRoute as your daily CLI instead of ChatGPT/Gemini?**
 
-| Yakni lebih baik | ChatGPT/Gemini langsung | HydraRoute CLI |
-|------------------|------------------------|----------------|
-| **Biaya** | Setiap query kena API | Math/fakta 0 token, gratis |
-| **Kecepatan** | 2-5 detik untuk semuanya | 0.0s untuk Tier 0, 2-15s untuk API |
-| **Privasi** | Data dikirim ke cloud | Tier 0: 100% lokal, tidak ada data keluar |
-| **Skrip automation** | **Tidak bisa** — butuh web UI atau API SDK | `python -m src.main -q "$question"` — bisa di-loop, cron, pipe |
-| **Token tracking** | Tidak ada | Setiap query tercatat berapa token dipakai |
+| Aspect | ChatGPT / Gemini UI | HydraRoute CLI |
+|--------|-------------------|----------------|
+| **Cost** | Every query hits paid API | Math/facts at 0 tokens — free |
+| **Speed** | 2-5s for everything | 0.0s for Tier 0, 2-15s for API tasks |
+| **Privacy** | Data sent to cloud servers | Tier 0: 100% local, zero data egress |
+| **Script automation** | **Not possible** — requires web UI or SDK | `python -m src.main -q "$question"` — loop, cron, pipe friendly |
+| **Token tracking** | None | Every query logs token consumption |
 
-**Use case nyata sehari-hari:**
+**Real-world daily use cases:**
 
 ```
-# Di shell scripts — auto-grade jawaban
+# In shell scripts — batch auto-answer
 for q in "2+2" "25% of 200" "capital of france"; do
-  python -m src.main -q "$q" >> hasil.txt
+  python -m src.main -q "$q" > results.txt
 done
 
-# Di cron — cek fakta otomatis
+# In cron — daily automated fact check
 0 9 * * * python -m src.main -q "What happened today in history?" > /tmp/daily_fact.txt
 
-# Pipe — jadi filter AI
+# Pipe — use as AI text filter
 echo "Extract JSON: Call John at Google in NYC" | python -m src.main -q "$(cat)"
 
-# Alias di .bashrc
+# Alias in .bashrc for quick use
 alias ask='python -m src.main -q'
 ask "Is 121 a palindrome?"    # → True
 ```
