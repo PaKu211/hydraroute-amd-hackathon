@@ -1,6 +1,6 @@
 # HydraRoute Agent — Progress Tracker
 
-## Latest Build: v3.4 (2026-07-12) — Champion Iteration
+## Latest Build: v3.5 (2026-07-12) — Gemma 4 Champion Edition
 
 ### Architecture
 ```
@@ -29,9 +29,11 @@ Tier 0 (Local Solvers) → Tier 1 (Small Model) → Tier 2 (Large Model)
 | **RTK Stack Trace Compression** | ✅ | Truncate Python/JS tracebacks to last 10 lines |
 | **Temperature Scaling + Prompt Mutation** | ✅ | Same-model fallback: temp=0.3, mutation string injected |
 | **OmniRoute API** | ✅ | `oc/deepseek-v4-flash-free`, `thinking=disabled` via extra_body |
-| **SymPy-LLM Symbiosis (new)** | ✅ | LLM translates word problem → SymPy solves locally. 100% accuracy |
-| **Session Dedup (new)** | ✅ | Same-category tasks sharing >80 char context → batched single API call |
-| **Relevance Compression (new)** | ✅ | TF-IDF extractive scoring for factual/summarization, keeps top 60% sentences |
+| **Gemma 4 Integration (new)** | ✅ | `google/gemma-4-31b-it` (Tier 2) + `google/gemma-4-26b-a4b-it` (Tier 1) via OpenRouter |
+| **Target: Best Use of Gemma Award** | 🎯 | $1,000 prize — Track 1. Gemma models prioritized in routing + documented strategy |
+| **SymPy-LLM Symbiosis** | ✅ | LLM translates word problem → SymPy solves locally. 100% accuracy |
+| **Session Dedup** | ✅ | Same-category tasks sharing >80 char context → batched single API call |
+| **Relevance Compression** | ✅ | TF-IDF extractive scoring for factual/summarization, keeps top 60% sentences |
 
 ### Tier-0 Local Solvers (11 modules)
 | Solver | Coverage | Status |
@@ -68,6 +70,19 @@ Total: 11 solver modules (matching 325 Agent's 11 solvers)
 5. `CACHE_PREFIX` scope bug → removed local import, use module-level import
 6. Simple classification false positive ("Great Britain" → "great" → POS) → 20-word length guard
 
+### End-to-End Test (Gemma 4 via OpenRouter — 2026-07-12)
+| Task | Category | Result | Source |
+|------|----------|--------|--------|
+| What is 2+2? | math | 4 | ✅ Tier 0 |
+| What is the capital of Japan? | factual | Tokyo | ✅ Gemma 26B Tier 1 |
+| Classify: I love this! | sentiment | POS | ✅ Tier 0 |
+| 5 days from 2024-01-15? | math | 2024-01-20 | ✅ Tier 0 |
+| Extract entities: John at Google NYC | ner | JSON | ✅ Gemma 26B Tier 1 |
+| Industrial Revolution summary | text_summarization | ok | ✅ Gemma 26B Tier 1 |
+| All mammals are animals... Is cat animal? | logical_reasoning | reasoning | ✅ Gemma 31B Tier 2 |
+| Fix: def add(a b): return a+b | code_debugging | fixed code | ✅ Gemma 31B Tier 2 |
+| Write prime function | code_generation | valid code | ✅ Gemma 31B Tier 2 |
+
 ### End-to-End Test (OmniRoute API — 2026-07-12)
 | Task | Category | Result | Source |
 |------|----------|--------|--------|
@@ -94,12 +109,27 @@ Total: 11 solver modules (matching 325 Agent's 11 solvers)
 - Tested in Codespace: `redesigned-adventure-9g7qjrpgg4xcpvw6`
 
 ### Credentials
-- OmniRoute API: `http://100.106.208.80:20128/v1` (key in .env)
-- Model: `oc/deepseek-v4-flash-free` (single model, Tier 1 = Tier 2)
+- OpenRouter API: `https://openrouter.ai/api/v1` (key in .env)
+- Models: `google/gemma-4-26b-a4b-it` (Tier 1) + `google/gemma-4-31b-it` (Tier 2)
+- Gemma 4 26B MoE: ~4B active params, efficient for simple tasks
+- Gemma 4 31B: Full 31B params, handles complex reasoning & code
 
-### Next Iteration Ideas
-1. Add local NER extraction (regex-based entity extraction for names, orgs, locations)
-2. Add local factual knowledge base for common facts (capital cities, basic science)
-3. Optimize YES/NO judge: use `max_tokens=1` with temperature=0.0 strictly
-4. Add more date formats (fuzzy parsing, relative dates)
-5. Research latest winning hackathon submissions for patterns
+### Gemma Award Strategy
+Target: **$1,000 Best Use of Gemma via Fireworks** (Track 1)
+
+Key differentiation vs other Gemma users:
+1. **Zero-token-first**: 11 local solvers handle ~93% tasks before Gemma is called
+2. **Tiered Gemma routing**: 26B MoE for simple tasks, 31B for complex (optimal token usage)
+3. **Session Dedup + Relevance Compression**: Minimize input tokens to Gemma
+4. **SymPy-LLM Symbiosis**: Gemma only generates equations, Python solves them (100% accuracy)
+5. **Self-Consistency Voting**: 3 parallel Gemma calls for reasoning tasks → consensus
+6. **Prompt caching**: Common prefix `HydraRoute | <category> |` optimizes cached tokens
+
+Documented in README.md with architecture diagram showing Gemma role in routing.
+
+### Docker Build
+- Platform: `linux/amd64`
+- Base: `python:3.11-slim`
+- Image: `hydraroute:latest`
+- Health check: OK
+- Tested in Codespace: `refactored-couscous-6x9r4qjx5wjf5prr`

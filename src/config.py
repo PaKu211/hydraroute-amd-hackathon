@@ -33,7 +33,9 @@ class Config:
             "mistral-7b-instruct": 7,
             "llama-v3-8b-instruct": 8,
             "llama-v3p1-8b-instruct": 8,
+            "gemma-4-26b-a4b-it": 10,  # MoE, ~4B active params = efficient
             "deepseek-v4-flash": 20,
+            "gemma-4-31b-it": 31,
             "llama-v3p1-70b-instruct": 70,
             "llama-v3p3-70b-instruct": 70,
             "qwen2p5-72b-instruct": 72,
@@ -43,6 +45,11 @@ class Config:
             "deepseek-v4-pro": 700,
         }
     )
+
+    @property
+    def is_gemma(self) -> bool:
+        """Check if currently active models are Gemma-family."""
+        return any("gemma" in m.lower() for m in self.allowed_models)
 
     def __post_init__(self):
         self._load_from_env()
