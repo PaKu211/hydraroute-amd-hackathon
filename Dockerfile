@@ -1,39 +1,19 @@
 # HydraRoute Agent - AMD Developer Hackathon ACT II
-# Build: docker build --platform linux/amd64 -t hydraroute:latest .
-# Run:   docker run --platform linux/amd64 \
-#          -e FIREWORKS_API_KEY=$FIREWORKS_API_KEY \
-#          -e ALLOWED_MODELS=$ALLOWED_MODELS \
-#          -v $(pwd)/input:/input -v $(pwd)/output:/output \
-#          hydraroute:latest
-
 FROM python:3.11-slim
 
-# Set non-interactive mode
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
-
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app
 WORKDIR /app
 
-# Install Python deps (no llama-cpp-python — use subprocess with pre-compiled llama.cpp binary)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
 COPY src/ ./src/
+COPY scripts/ ./scripts/
+RUN mkdir -p /input /output /app/models /app/bin
 
-# Create output dir (will be overridden by volume mount)
-RUN mkdir -p /input /output /app/models /app/llama.cpp
+# Try to install optional local model (zero tokens). Failure → no local model, API fallback
+RUN pip install huggingface-hub -q 2>/dev/null
+RUN python scripts/download_local_model.py 2>&1 || echo "Local model download skipped"
 
-# Download pre-compiled llama.cpp binary (15MB, no compilation needed)
-RUN pip install huggingface-hub -q && python -c "import urllib.request, tarfile, os; url = 'https://github.com/ggml-org/llama.cpp/releases/download/b9969/llama-b9969-bin-ubuntu-x64.tar.gz'; out = '/tmp/llama.tar.gz'; print('Downloading llama.cpp binary...'); urllib.request.urlretrieve(url, out); print('Extracting...'); tarfile.open(out).extractall('/app/llama.cpp'); os.chmod('/app/llama.cpp/llama-cli', 0o755); os.remove(out); print('llama.cpp binary ready')"
-
-# Download local GGUF model for zero-token inference (Qwen2.5 1.5B Q4_K_M ~1GB)
-RUN pip install huggingface-hub -q && \
-    python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='Qwen/Qwen2.5-1.5B-Instruct-GGUF', filename='qwen2.5-1.5b-instruct-q4_k_m.gguf', local_dir='/app/models')"
-
-# Health check - ensure python can import main (model not loaded yet)
-RUN python -c "import src.config; import src.cache; import src.router; print('HydraRoute health check: OK')"
-
-# Run the agent
+RUN python -c "import src.config; import src.cache; import src.router; print('Health check: OK')"
 CMD ["python", "-m", "src.main"]
