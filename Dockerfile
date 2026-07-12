@@ -26,11 +26,20 @@ COPY src/ ./src/
 RUN mkdir -p /input /output /app/models /app/llama.cpp
 
 # Download pre-compiled llama.cpp binary (15MB, no compilation needed)
-RUN apt-get update -qq && apt-get install -y -qq curl 2>/dev/null && rm -rf /var/lib/apt/lists/* && \
-    curl -sL "https://github.com/ggml-org/llama.cpp/releases/download/b9969/llama-b9969-bin-ubuntu-x64.tar.gz" -o /tmp/llama.tar.gz && \
-    tar -xzf /tmp/llama.tar.gz -C /app/llama.cpp && \
-    chmod +x /app/llama.cpp/llama-cli && \
-    rm /tmp/llama.tar.gz
+RUN pip install huggingface-hub -q && \
+    python -c "
+import urllib.request, tarfile, os, sys
+url = 'https://github.com/ggml-org/llama.cpp/releases/download/b9969/llama-b9969-bin-ubuntu-x64.tar.gz'
+out = '/tmp/llama.tar.gz'
+print('Downloading llama.cpp binary...')
+urllib.request.urlretrieve(url, out)
+print('Extracting...')
+with tarfile.open(out) as tf:
+    tf.extractall('/app/llama.cpp')
+os.chmod('/app/llama.cpp/llama-cli', 0o755)
+os.remove(out)
+print('llama.cpp binary ready')
+"
 
 # Download local GGUF model for zero-token inference (Qwen2.5 1.5B Q4_K_M ~1GB)
 RUN pip install huggingface-hub -q && \
