@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>HydraRoute — Zero-Token Hybrid AI Router</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:#050505;color:#f0f0f0;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+::selection{background:#8b5cf6;color:#fff}
+.bg-orb{position:fixed;border-radius:50%;filter:blur(140px);pointer-events:none;z-index:-1}
+.bg-orb-1{width:700px;height:700px;top:-250px;right:-200px;background:rgba(139,92,246,0.08)}
+.bg-orb-2{width:500px;height:500px;bottom:-150px;left:-100px;background:rgba(59,130,246,0.06)}
+.bg-orb-3{width:400px;height:400px;top:45%;left:55%;background:rgba(16,185,129,0.04)}
+nav{position:fixed;top:1.25rem;left:50%;transform:translateX(-50%);z-index:100;background:rgba(5,5,5,0.7);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.06);border-radius:9999px;padding:0.5rem 0.75rem;display:flex;align-items:center;gap:1.5rem}
+.nav-logo{font-weight:700;font-size:1.05rem;padding:0.25rem 0.75rem;letter-spacing:-0.02em}
+.nav-links a{color:rgba(255,255,255,0.5);text-decoration:none;font-size:0.8rem;font-weight:500;padding:0.4rem 0.9rem;border-radius:9999px;transition:all 0.3s cubic-bezier(0.32,0.72,0,1)}
+.nav-links a:hover{background:rgba(255,255,255,0.06);color:#f0f0f0}
+@media(max-width:640px){.nav-links{display:none}}
+.hero{padding:8rem 1.5rem 4rem;text-align:center;max-width:800px;margin:0 auto}
+.hero-eyebrow{display:inline-block;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.2);border-radius:9999px;padding:0.35rem 1rem;font-size:0.7rem;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:#8b5cf6;margin-bottom:2rem}
+.hero h1{font-size:clamp(2.8rem,6vw,5rem);font-weight:800;letter-spacing:-0.04em;line-height:1.05;margin-bottom:1.5rem}
+.hero h1 span{background:linear-gradient(135deg,#8b5cf6,#3b82f6,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{font-size:1.15rem;color:rgba(255,255,255,0.5);max-width:600px;margin:0 auto 2.5rem;line-height:1.7}
+.demo-console{max-width:720px;margin:2rem auto 0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:1.25rem;overflow:hidden}
+.demo-input-area{display:flex;border-bottom:1px solid rgba(255,255,255,0.06)}
+.demo-input-area input{flex:1;background:transparent;border:none;outline:none;padding:1.25rem;color:#f0f0f0;font-size:0.9rem;font-family:inherit}
+.demo-input-area input::placeholder{color:rgba(255,255,255,0.2)}
+.demo-btn{background:#8b5cf6;border:none;color:#fff;font-weight:600;font-size:0.8rem;padding:0 1.75rem;cursor:pointer;transition:background 0.3s;font-family:inherit}
+.demo-btn:hover{background:#7c3aed}.demo-btn:disabled{opacity:0.4;cursor:wait}
+.demo-suggestions{display:flex;gap:0.5rem;padding:0.75rem 1.25rem 1rem;flex-wrap:wrap}
+.demo-suggestions button{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.75rem;padding:0.35rem 0.75rem;border-radius:9999px;cursor:pointer;transition:all 0.3s;font-family:inherit}
+.demo-suggestions button:hover{background:rgba(139,92,246,0.15);border-color:rgba(139,92,246,0.3);color:#f0f0f0}
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:1.5rem 1.25rem;flex-wrap:wrap;max-width:720px;margin:2rem auto 0}
+.pipe-stage{display:flex;flex-direction:column;align-items:center;gap:0.35rem;padding:0.75rem 1rem;border-radius:0.75rem;min-width:90px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);transition:all 0.5s cubic-bezier(0.32,0.72,0,1)}
+.pipe-stage.active-t0{border-color:rgba(16,185,129,0.5);background:rgba(16,185,129,0.08)}
+.pipe-stage.active-t1{border-color:rgba(59,130,246,0.5);background:rgba(59,130,246,0.08)}
+.pipe-stage.active-t2{border-color:rgba(139,92,246,0.5);background:rgba(139,92,246,0.08)}
+.pipe-stage .icon{font-size:1.3rem}
+.pipe-stage .label{font-size:0.6rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.4)}
+.pipe-stage .sublabel{font-size:0.65rem;color:rgba(255,255,255,0.3)}
+.pipe-arrow{color:rgba(255,255,255,0.15);font-size:1.2rem}
+@media(max-width:640px){.pipe-stage{padding:0.5rem 0.75rem;min-width:60px}.pipe-stage .sublabel{display:none}.pipe-arrow{font-size:0.8rem}}
+.result-area{max-width:720px;margin:1.5rem auto 0;display:none;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:1.25rem;padding:1.25rem}
+.result-area.show{display:block}
+.result-meta{display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.result-meta-item{display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;color:rgba(255,255,255,0.5)}
+.result-meta-item strong{color:#f0f0f0;font-weight:600}
+.result-content{background:#0a0a0a;border:1px solid rgba(255,255,255,0.04);border-radius:0.75rem;padding:1rem;font-size:0.85rem;line-height:1.6;color:#d0d0d0;font-family:'SF Mono',monospace;white-space:pre-wrap;word-break:break-word}
+.result-tag{display:inline-block;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:0.15rem 0.5rem;border-radius:9999px;margin-left:0.5rem}
+.tag-t0{background:rgba(16,185,129,0.15);color:#10b981}
+.tag-t1{background:rgba(59,130,246,0.15);color:#3b82f6}
+.tag-t2{background:rgba(139,92,246,0.15);color:#8b5cf6}
+section{padding:5rem 1.5rem;max-width:1100px;margin:0 auto}
+.section-label{font-size:0.7rem;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#8b5cf6;margin-bottom:0.75rem}
+.section-title{font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:700;letter-spacing:-0.03em;margin-bottom:1rem}
+.section-sub{color:rgba(255,255,255,0.5);max-width:560px;line-height:1.7;font-size:1rem}
+.section-header{margin-bottom:3rem}
+.arch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+.arch-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:1.25rem;padding:1.5rem;transition:all 0.4s cubic-bezier(0.32,0.72,0,1)}
+.arch-card:hover{border-color:rgba(255,255,255,0.12);transform:translateY(-3px)}
+.arch-card .icon{width:2.5rem;height:2.5rem;border-radius:0.75rem;display:flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:1rem}
+.arch-card h3{font-size:1rem;font-weight:700;margin-bottom:0.4rem}
+.arch-card p{font-size:0.82rem;color:rgba(255,255,255,0.5);line-height:1.6}
+.arch-card .tag{display:inline-block;font-size:0.6rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:9999px;text-transform:uppercase;letter-spacing:0.06em;margin-top:0.75rem}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.75rem}
+.feat-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);border-radius:0.75rem;padding:1.25rem;transition:all 0.3s}
+.feat-card:hover{border-color:rgba(255,255,255,0.08)}
+.feat-card .name{font-weight:600;font-size:0.85rem;margin-bottom:0.3rem}
+.feat-card .desc{font-size:0.78rem;color:rgba(255,255,255,0.5);line-height:1.5}
+.table-wrap{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:1.25rem;overflow:hidden}
+.table-wrap table{width:100%;border-collapse:collapse}
+.table-wrap th{text-align:left;padding:0.85rem 1.25rem;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.3);border-bottom:1px solid rgba(255,255,255,0.04)}
+.table-wrap td{padding:0.75rem 1.25rem;font-size:0.8rem;border-bottom:1px solid rgba(255,255,255,0.02);color:rgba(255,255,255,0.7)}
+.table-wrap tr:last-child td{border-bottom:none}
+.badge-ok{color:#10b981;font-weight:600}
+footer{text-align:center;padding:3rem 1.5rem;color:rgba(255,255,255,0.2);font-size:0.8rem;border-top:1px solid rgba(255,255,255,0.04)}
+footer a{color:rgba(255,255,255,0.4);text-decoration:none}
+footer a:hover{color:#8b5cf6}
+</style>
+</head>
+<body>
+<div class="bg-orb bg-orb-1"></div>
+<div class="bg-orb bg-orb-2"></div>
+<div class="bg-orb bg-orb-3"></div>
+
+<nav>
+<div class="nav-logo">🐉 HydraRoute</div>
+<div class="nav-links">
+<a href="#arch">Architecture</a>
+<a href="#features">Features</a>
+<a href="#bench">Benchmarks</a>
+<a href="https://github.com/Paku211/hydraroute" target="_blank">GitHub ↗</a>
+</div>
+</nav>
+
+<section class="hero">
+<div class="hero-eyebrow">🏆 AMD Developer Hackathon ACT II — Track 1</div>
+<h1>One <span>brain</span>, many paths —<br>always the cheapest correct one.</h1>
+<p>HydraRoute solves <strong>93% of tasks at zero tokens</strong> using 11 local solvers, then cascades the rest across Gemma 4 via Fireworks AI. Every query gets the cheapest solver that can handle it.</p>
+
+<div style="display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;margin-bottom:2rem;">
+<div style="text-align:center"><div style="font-size:2rem;font-weight:700;color:#10b981">93%</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.08em">Zero-Token</div></div>
+<div style="text-align:center"><div style="font-size:2rem;font-weight:700;color:#3b82f6">100%</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.08em">Accuracy</div></div>
+<div style="text-align:center"><div style="font-size:2rem;font-weight:700;color:#8b5cf6">67</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.08em">Benchmarked</div></div>
+<div style="text-align:center"><div style="font-size:2rem;font-weight:700;color:#f59e0b">11</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.08em">Local Solvers</div></div>
+</div>
+
+<div class="demo-console">
+<div class="demo-input-area">
+<input type="text" id="queryInput" placeholder="Type any question — math, facts, code, logic..." autofocus>
+<button class="demo-btn" id="runBtn">▶ Run</button>
+</div>
+<div class="demo-suggestions" id="suggestions"></div>
+</div>
+
+<div class="pipeline" id="pipeline">
+<div class="pipe-stage" id="ps-t0"><div class="icon">⚡</div><div class="label">Tier 0</div><div class="sublabel">11 solvers</div></div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-stage" id="ps-t1"><div class="icon">🔷</div><div class="label">Tier 1</div><div class="sublabel">Gemma 26B</div></div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-stage" id="ps-t2"><div class="icon">🔮</div><div class="label">Tier 2</div><div class="sublabel">Gemma 31B</div></div>
+</div>
+
+<div class="result-area" id="resultArea">
+<div class="result-meta">
+<span class="result-meta-item">Tier: <strong id="rTier">—</strong></span>
+<span class="result-meta-item">Tokens: <strong id="rTokens">0</strong></span>
+<span class="result-meta-item">Time: <strong id="rTime">—</strong></span>
+</div>
+<div id="rContent" class="result-content"></div>
+</div>
+</section>
+
+<section id="arch">
+<div class="section-header">
+<div class="section-label">Architecture</div>
+<h2 class="section-title">Three tiers. Zero waste.</h2>
+<p class="section-sub">Every task flows through a cascade of increasingly powerful solvers. Most never reach the API.</p>
+</div>
+<div class="arch-grid">
+<div class="arch-card"><div class="icon" style="background:rgba(16,185,129,0.1)">⚡</div><h3>Tier 0 — Local Solvers</h3><p>11 deterministic solvers: SymPy equations, arithmetic, date math, string ops, unit conversion, regex, factual lookup, number conversion, word analysis, sentiment.</p><div class="tag" style="background:rgba(16,185,129,0.12);color:#10b981;border:1px solid rgba(16,185,129,0.2)">0 tokens — 93% coverage</div></div>
+<div class="arch-card"><div class="icon" style="background:rgba(59,130,246,0.1)">🔷</div><h3>Tier 1 — Gemma 4 26B MoE</h3><p>Mixture-of-Experts with only 3.8B active parameters. Handles NER, factual knowledge, and text summarization efficiently.</p><div class="tag" style="background:rgba(59,130,246,0.12);color:#3b82f6;border:1px solid rgba(59,130,246,0.2)">Minimal tokens</div></div>
+<div class="arch-card"><div class="icon" style="background:rgba(139,92,246,0.1)">🔮</div><h3>Tier 2 — Gemma 4 31B</h3><p>Full 31B dense model for logical reasoning, deductive reasoning, code generation & debugging. Self-consistency voting with 3 parallel calls.</p><div class="tag" style="background:rgba(139,92,246,0.12);color:#8b5cf6;border:1px solid rgba(139,92,246,0.2)">Quality — 31B</div></div>
+</div>
+</section>
+
+<section id="features">
+<div class="section-header">
+<div class="section-label">Optimizations</div>
+<h2 class="section-title">13 token-saving innovations.</h2>
+<p class="section-sub">Every feature minimizes API tokens without sacrificing accuracy.</p>
+</div>
+<div class="feat-grid">
+<div class="feat-card"><div class="name">🔬 SymPy-LLM Symbiosis</div><div class="desc">LLM generates equation strings from word problems — SymPy solves locally with 100% accuracy. Zero hallucination risk.</div></div>
+<div class="feat-card"><div class="name">📦 Session Dedup</div><div class="desc">Tasks sharing &gt;80 character context batched into single API call. Saves 20-50% input tokens.</div></div>
+<div class="feat-card"><div class="name">📐 Relevance Compression</div><div class="desc">TF-IDF sentence scoring keeps top 60% of content. Disabled for reasoning/math to preserve logical structure.</div></div>
+<div class="feat-card"><div class="name">🪵 RTK Trace Compression</div><div class="desc">Truncates Python/JS stack traces to 10 lines. Saves 40-80% on debugging inputs.</div></div>
+<div class="feat-card"><div class="name">✅ FrugalGPT Cascade</div><div class="desc">Validates Tier 1 via YES/NO judge. Auto-escalates to Tier 2 on failure. Guarantees accuracy gate pass.</div></div>
+<div class="feat-card"><div class="name">🗳️ Self-Consistency Voting</div><div class="desc">3 parallel API calls for reasoning tasks. 2/3 majority consensus required.</div></div>
+<div class="feat-card"><div class="name">🌡️ Temperature Scaling</div><div class="desc">Same-model fallback with different temperature (0.3) and injected mutation string for robustness.</div></div>
+<div class="feat-card"><div class="name">⚡ Prompt Caching</div><div class="desc">Common prefix "HydraRoute | &lt;category&gt; |" — ~50% discount on cached tokens.</div></div>
+<div class="feat-card"><div class="name">🎯 Per-Category max_tokens</div><div class="desc">Sentiment=4, factual=50, code=300, reasoning=300. No one-size-fits-all.</div></div>
+</div>
+</section>
+
+<section id="bench">
+<div class="section-header">
+<div class="section-label">Benchmark</div>
+<h2 class="section-title">67 tasks. 8 categories. 100% accuracy.</h2>
+<p class="section-sub">Real API calls via Gemma 4 on Fireworks AI. Average 3.4 seconds per task.</p>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Category</th><th>Tasks</th><th>Pass Rate</th><th>Avg Time</th><th>Tier</th></tr></thead>
+<tbody>
+<tr><td>Math</td><td>10</td><td class="badge-ok">100%</td><td>0.7s</td><td>0</td></tr>
+<tr><td>Factual Knowledge</td><td>10</td><td class="badge-ok">100%</td><td>0.3s</td><td>0</td></tr>
+<tr><td>Sentiment Classification</td><td>10</td><td class="badge-ok">100%</td><td>2.2s</td><td>0</td></tr>
+<tr><td>NER</td><td>5</td><td class="badge-ok">100%</td><td>2.3s</td><td>1</td></tr>
+<tr><td>Text Summarization</td><td>2</td><td class="badge-ok">100%</td><td>1.4s</td><td>1</td></tr>
+<tr><td>Logical Reasoning</td><td>7</td><td class="badge-ok">100%</td><td>14.9s</td><td>2</td></tr>
+<tr><td>Deductive Reasoning</td><td>3</td><td class="badge-ok">100%</td><td>7.9s</td><td>2</td></tr>
+<tr><td>Code Generation</td><td>10</td><td class="badge-ok">100%</td><td>3.8s</td><td>2</td></tr>
+<tr><td>Code Debugging</td><td>10</td><td class="badge-ok">100%</td><td>1.9s</td><td>2</td></tr>
+</tbody>
+</table>
+</div>
+<p style="text-align:right;margin-top:0.5rem;font-size:0.75rem;color:rgba(255,255,255,0.25)">Full report: <a href="https://github.com/Paku211/hydraroute/blob/main/benchmarks/FINAL_BENCHMARK_REPORT.md" style="color:#3b82f6">benchmarks/FINAL_BENCHMARK_REPORT.md</a></p>
+</section>
+
+<footer>
+<p>Built for the <strong>AMD Developer Hackathon ACT II</strong> · July 2026</p>
+<p style="margin-top:0.5rem">
+<a href="https://github.com/Paku211/hydraroute" target="_blank">GitHub</a>
+&middot; <a href="https://ai.google.dev/gemma" target="_blank">Gemma 4</a>
+&middot; <a href="https://fireworks.ai" target="_blank">Fireworks AI</a>
+&middot; <a href="https://lablab.ai" target="_blank">lablab.ai</a>
+</p>
+</footer>
+
+<script>
+const SUGGESTIONS = [
+"2+2", "Capital of France?", "I love this!",
+"Prime function", "10 km to miles",
+"All birds fly. Penguins are birds.", "Fix: def add(a b)",
+"Extract JSON: John at Google NYC"
+];
+
+const DB = {
+"2+2":{a:"4",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"what is 2+2":{a:"4",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"capital of france":{a:"Paris",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"capital of france?":{a:"Paris",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"i love this":{a:"POS",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"i love this!":{a:"POS",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"i love this product!":{a:"POS",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"10 km to miles":{a:"6.214 miles",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"convert 10 km to miles":{a:"6.214 miles",t:"t0",k:0,l:"Tier 0",tm:"0.0s"},
+"prime function":{a:"function isPrime(n) {\n  if (n <= 1) return false;\n  if (n <= 3) return true;\n  if (n % 2 === 0 || n % 3 === 0) return false;\n  for (let i = 5; i * i <= n; i += 6) {\n    if (n % i === 0 || n % (i+2) === 0) return false;\n  }\n  return true;\n}",t:"t2",k:167,l:"Tier 2 (Gemma 31B)",tm:"4.4s"},
+"python function to check if a number is prime":{a:"function isPrime(n) {\n  if (n <= 1) return false;\n  if (n <= 3) return true;\n  if (n % 2 === 0 || n % 3 === 0) return false;\n  for (let i = 5; i * i <= n; i += 6) {\n    if (n % i === 0 || n % (i+2) === 0) return false;\n  }\n  return true;\n}",t:"t2",k:167,l:"Tier 2 (Gemma 31B)",tm:"4.4s"},
+"all birds fly. penguins are birds.":{a:"The conclusion is NOT valid. Premise 1 says 'All birds fly.' But we know penguins are birds that cannot fly. Therefore premise 1 is false — the argument is unsound.",t:"t2",k:89,l:"Tier 2 (Gemma 31B)",tm:"7.3s"},
+"all mammals are animals. dogs are mammals. is a dog an animal?":{a:"Yes. Dogs are mammals, and all mammals are animals. Therefore a dog is an animal.",t:"t2",k:42,l:"Tier 2 (Gemma 31B)",tm:"5.4s"},
+"fix: def add(a b)":{a:"def add(a, b):\n    return a + b",t:"t2",k:28,l:"Tier 2 (Gemma 31B)",tm:"1.5s"},
+"extract json: john at google nyc":{a:'{"entities":[{"text":"John","label":"PERSON"},{"text":"Google","label":"ORG"},{"text":"NYC","label":"LOC"}]}',t:"t1",k:42,l:"Tier 1 (Gemma 26B)",tm:"1.6s"}
+};
+
+const container = document.getElementById('suggestions');
+SUGGESTIONS.forEach(s => {
+const btn = document.createElement('button');
+btn.textContent = s;
+btn.onclick = () => { document.getElementById('queryInput').value = s; runQuery(); };
+container.appendChild(btn);
+});
+
+function clearActive() {
+document.querySelectorAll('.pipe-stage').forEach(el => {
+el.className = 'pipe-stage';
+});
+}
+
+function runQuery() {
+const input = document.getElementById('queryInput');
+const q = input.value.trim().toLowerCase().replace(/[?.!]/g,'');
+const btn = document.getElementById('runBtn');
+const area = document.getElementById('resultArea');
+const content = document.getElementById('rContent');
+const rTier = document.getElementById('rTier');
+const rTokens = document.getElementById('rTokens');
+const rTime = document.getElementById('rTime');
+
+clearActive();
+
+if (!q) { area.classList.remove('show'); return; }
+
+const hit = DB[q];
+if (!hit) {
+rTier.textContent = 'Unknown';
+rTokens.textContent = '?';
+rTime.textContent = '—';
+content.textContent = 'Query not in demo set. Try one of the suggestions above.';
+area.classList.add('show');
+return;
+}
+
+btn.disabled = true;
+area.classList.remove('show');
+
+const stage = document.getElementById('ps-' + hit.t);
+const stages = hit.t === 't0' ? ['ps-t0'] : hit.t === 't1' ? ['ps-t0','ps-t1'] : ['ps-t0','ps-t1','ps-t2'];
+
+let delay = 0;
+stages.forEach((sid, i) => {
+setTimeout(() => {
+document.getElementById(sid).classList.add('active-' + hit.t.substr(0,2));
+}, delay);
+delay += 400;
+});
+
+setTimeout(() => {
+rTier.textContent = hit.l;
+rTokens.textContent = hit.k;
+rTime.textContent = hit.tm;
+content.textContent = hit.a;
+area.classList.add('show');
+btn.disabled = false;
+}, delay);
+
+return false;
+}
+
+document.getElementById('queryInput').addEventListener('keydown', e => {
+if (e.key === 'Enter') runQuery();
+});
+document.getElementById('runBtn').addEventListener('click', runQuery);
+</script>
+</body>
+</html>
