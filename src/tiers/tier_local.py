@@ -1,87 +1,107 @@
 """
-Tier Local - Zero-token local inference via llama.cpp GGUF.
-Runs a small (1.5B) model inside the Docker container for simple tasks.
-0 tokens, 0 cost, 100% accuracy for supported categories.
+Tier Local - Zero-token local inference via llama.cpp subprocess + GGUF model.
+No pip compilation needed — uses pre-compiled llama-cli binary downloaded during Docker build.
 """
 
 import logging
 import os
-from pathlib import Path
+import subprocess
+import tempfile
 
 logger = logging.getLogger("hydraroute")
 
 MODEL_PATH = os.environ.get(
     "LOCAL_MODEL_PATH", "/app/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 )
+LLAMA_CLI = os.environ.get("LLAMA_CLI_PATH", "/app/llama.cpp/llama-cli")
 
-_llm = None
+_llama_available = None
 
 
-def _load_model():
-    global _llm
-    if _llm is not None:
-        return True
-    if not os.path.exists(MODEL_PATH):
-        logger.warning("Local model not found at %s", MODEL_PATH)
-        return False
-    try:
-        from llama_cpp import Llama
-
-        logger.info("Loading local model from %s...", MODEL_PATH)
-        _llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=1024,
-            n_threads=2,
-            n_gpu_layers=0,
-            verbose=False,
+def _is_available() -> bool:
+    global _llama_available
+    if _llama_available is not None:
+        return _llama_available
+    _llama_available = os.path.exists(MODEL_PATH) and os.path.exists(LLAMA_CLI)
+    if not _llama_available:
+        logger.debug(
+            "Tier Local unavailable: model=%s exists=%s, llama-cli=%s exists=%s",
+            MODEL_PATH,
+            os.path.exists(MODEL_PATH),
+            LLAMA_CLI,
+            os.path.exists(LLAMA_CLI),
         )
-        logger.info("Local model loaded successfully")
-        return True
-    except Exception as e:
-        logger.warning("Failed to load local model: %s", e)
-        return False
+    return _llama_available
 
 
 def execute(instruction: str, category: str = "") -> str | None:
-    if not _load_model():
+    if not _is_available():
         return None
 
-    simple_cats = {
+    if category not in (
         "sentiment_classification",
         "ner",
         "named_entity_recognition",
         "factual_knowledge",
         "text_summarization",
-    }
-    if category and category not in simple_cats:
+    ):
         return None
 
     prompts = {
-        "sentiment_classification": f"Classify sentiment (POS/NEG/NEU): {instruction}",
-        "ner": f"Extract entities as JSON: {instruction}",
-        "named_entity_recognition": f"Extract entities as JSON: {instruction}",
-        "factual_knowledge": f"Answer concisely: {instruction}",
-        "text_summarization": f"Summarize concisely: {instruction}",
+        "sentiment_classification": (
+            f"<|im_start|>system\nClassify sentiment. Reply POS, NEG, or NEU.<|im_end|>\n"
+            f"<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"
+        ),
+        "ner": (
+            f"<|im_start|>system\nExtract named entities as JSON.<|im_end|>\n"
+            f"<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"
+        ),
+        "named_entity_recognition": (
+            f"<|im_start|>system\nExtract named entities as JSON.<|im_end|>\n"
+            f"<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"
+        ),
+        "factual_knowledge": (
+            f"<|im_start|>system\nAnswer concisely.<|im_end|>\n"
+            f"<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"
+        ),
+        "text_summarization": (
+            f"<|im_start|>system\nSummarize concisely.<|im_end|>\n"
+            f"<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"
+        ),
     }
 
-    prompt = prompts.get(category, instruction)
-    system = "You are a helpful AI assistant. Answer concisely and accurately."
+    prompt = prompts.get(category)
+    if not prompt:
+        return None
 
     try:
-        response = _llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
+        result = subprocess.run(
+            [
+                LLAMA_CLI,
+                "-m",
+                MODEL_PATH,
+                "--prompt",
+                prompt,
+                "-n",
+                "150",
+                "-t",
+                "2",
+                "--temp",
+                "0.0",
+                "--no-display-prompt",
             ],
-            max_tokens=150,
-            temperature=0.0,
-            stop=["</s>", "\n\n"],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
-        answer = response["choices"][0]["message"]["content"].strip()
-        if answer:
-            logger.info("Tier Local solved [%s]: %s", category, answer[:60])
-            return answer
+        output = result.stdout.strip()
+        if output:
+            cleaned = output.split("<|im_end|>")[0].strip()
+            logger.info("Tier Local solved [%s]: %s", category, cleaned[:60])
+            return cleaned
+    except subprocess.TimeoutExpired:
+        logger.warning("Tier Local timed out for [%s]", category)
     except Exception as e:
-        logger.warning("Tier Local failed: %s", e)
+        logger.warning("Tier Local failed [%s]: %s", category, e)
 
     return None
