@@ -13,8 +13,8 @@ logger = logging.getLogger("hydraroute")
 MODEL_PATH = os.environ.get(
     "LOCAL_MODEL_PATH", "/app/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 )
-LLAMA_CLI = os.environ.get("LLAMA_CLI_PATH", "/app/bin/llama-cli")
-BIN_DIR = os.path.dirname(LLAMA_CLI)
+LLAMA_LIB_DIR = os.environ.get("LLAMA_LIB_DIR", "/app/bin/llama-b9969")
+LLAMA_CLI = os.environ.get("LLAMA_CLI_PATH", os.path.join(LLAMA_LIB_DIR, "llama-cli"))
 
 _llama_available = None
 
@@ -77,7 +77,7 @@ def execute(instruction: str, category: str = "") -> str | None:
 
     try:
         env = os.environ.copy()
-        env["LD_LIBRARY_PATH"] = BIN_DIR + ":" + env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = LLAMA_LIB_DIR + ":" + env.get("LD_LIBRARY_PATH", "")
         result = subprocess.run(
             [
                 LLAMA_CLI,
