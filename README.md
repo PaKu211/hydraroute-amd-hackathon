@@ -218,9 +218,9 @@ All tasks answered correctly. Full report: [`benchmarks/FINAL_BENCHMARK_REPORT.m
 
 ---
 
-## Gemma Award Strategy
+## Gemma Strategy
 
-HydraRoute targets the **$1,000 Best Use of Gemma via Fireworks** award with:
+HydraRoute targets:
 
 1. **Tiered Gemma routing** — 26B MoE for simple tasks, 31B for complex
 2. **SymPy-LLM Symbiosis** — Gemma generates equations, Python solves them (100% accuracy)
