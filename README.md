@@ -75,11 +75,13 @@ For logical reasoning, deductive reasoning, code generation, and debugging. Full
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Prerequisites
+HydraRoute works in two modes: **batch** (hackathon eval) and **interactive** (daily use).
 
-- Docker (with `linux/amd64` support)
+### 🔧 Prerequisites
+
+- Docker (with `linux/amd64` support) or Python 3.11+
 - Fireworks AI API key (or OpenRouter)
 - Set environment variables:
 
@@ -89,13 +91,76 @@ export FIREWORKS_BASE_URL="https://api.fireworks.ai/inference/v1"
 export ALLOWED_MODELS="accounts/fireworks/models/llama-v3p1-8b-instruct,accounts/fireworks/models/llama-v3p3-70b-instruct"
 ```
 
-### 2. Build
+### 🐉 Universal CLI — daily AI assistant
+
+HydraRoute is more than a hackathon submission — it's a **fully functional AI CLI for daily use**. Install once, use every day.
+
+```bash
+# ── Quick math (zero tokens, no API call) ──
+python -m src.main -q "25% of 200"          # → 50
+python -m src.main -q "5 days from today"    # → 2026-07-17
+python -m src.main -q "convert 10 km to miles" # → 6.214
+
+# ── Instant facts (zero or minimal tokens) ──
+python -m src.main -q "Capital of Japan"     # → Tokyo
+python -m src.main -q "speed of light"       # → 299,792,458 m/s
+python -m src.main -q "atomic number of hydrogen" # → 1
+
+# ─− Text analysis (zero tokens) ──
+python -m src.main -q "count vowels in hello"  # → 2
+python -m src.main -q "Classify: this movie was terrible"  # → NEG
+
+# ── Code generation (Gemma 4 31B) ──
+python -m src.main -q "Python function to reverse a string"
+
+# ── Logical reasoning (Gemma 4 31B + self-consistency) ──
+python -m src.main -q "All birds fly. Penguins are birds. Do penguins fly?"
+
+# ── NER Extraction ──
+python -m src.main -q "Extract entities as JSON: Dr. Smith from Harvard in Boston"
+
+# ── Debugging ──
+python -m src.main -q "Fix: def add(a b): return a+b"
+```
+
+**Why use HydraRoute as your daily CLI instead of ChatGPT/Gemini?**
+
+| Yakni lebih baik | ChatGPT/Gemini langsung | HydraRoute CLI |
+|------------------|------------------------|----------------|
+| **Biaya** | Setiap query kena API | Math/fakta 0 token, gratis |
+| **Kecepatan** | 2-5 detik untuk semuanya | 0.0s untuk Tier 0, 2-15s untuk API |
+| **Privasi** | Data dikirim ke cloud | Tier 0: 100% lokal, tidak ada data keluar |
+| **Skrip automation** | **Tidak bisa** — butuh web UI atau API SDK | `python -m src.main -q "$question"` — bisa di-loop, cron, pipe |
+| **Token tracking** | Tidak ada | Setiap query tercatat berapa token dipakai |
+
+**Use case nyata sehari-hari:**
+
+```
+# Di shell scripts — auto-grade jawaban
+for q in "2+2" "25% of 200" "capital of france"; do
+  python -m src.main -q "$q" >> hasil.txt
+done
+
+# Di cron — cek fakta otomatis
+0 9 * * * python -m src.main -q "What happened today in history?" > /tmp/daily_fact.txt
+
+# Pipe — jadi filter AI
+echo "Extract JSON: Call John at Google in NYC" | python -m src.main -q "$(cat)"
+
+# Alias di .bashrc
+alias ask='python -m src.main -q'
+ask "Is 121 a palindrome?"    # → True
+```
+
+### 📦 Batch mode (hackathon eval)
+
+**1. Build**
 
 ```bash
 docker build --platform linux/amd64 -t hydraroute:latest .
 ```
 
-### 3. Prepare input
+**2. Prepare input**
 
 Create `input/tasks.json`:
 
@@ -107,7 +172,7 @@ Create `input/tasks.json`:
 ]
 ```
 
-### 4. Run
+**3. Run**
 
 ```bash
 docker run --platform linux/amd64 \
@@ -119,9 +184,7 @@ docker run --platform linux/amd64 \
   hydraroute:latest
 ```
 
-### 5. Output
-
-Results appear in `output/results.json`:
+**4. Output**
 
 ```json
 [
