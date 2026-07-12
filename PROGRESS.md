@@ -70,18 +70,30 @@ Total: 11 solver modules (matching 325 Agent's 11 solvers)
 5. `CACHE_PREFIX` scope bug → removed local import, use module-level import
 6. Simple classification false positive ("Great Britain" → "great" → POS) → 20-word length guard
 
-### End-to-End Test (Gemma 4 via OpenRouter — 2026-07-12)
-| Task | Category | Result | Source |
-|------|----------|--------|--------|
-| What is 2+2? | math | 4 | ✅ Tier 0 |
-| What is the capital of Japan? | factual | Tokyo | ✅ Gemma 26B Tier 1 |
-| Classify: I love this! | sentiment | POS | ✅ Tier 0 |
-| 5 days from 2024-01-15? | math | 2024-01-20 | ✅ Tier 0 |
-| Extract entities: John at Google NYC | ner | JSON | ✅ Gemma 26B Tier 1 |
-| Industrial Revolution summary | text_summarization | ok | ✅ Gemma 26B Tier 1 |
-| All mammals are animals... Is cat animal? | logical_reasoning | reasoning | ✅ Gemma 31B Tier 2 |
-| Fix: def add(a b): return a+b | code_debugging | fixed code | ✅ Gemma 31B Tier 2 |
-| Write prime function | code_generation | valid code | ✅ Gemma 31B Tier 2 |
+### Optimized System Prompts (final)
+| Category | Prompt | max_tokens |
+|----------|--------|------------|
+| factual_knowledge | `HydraRoute \| factual \| Answer concisely.` | 50 |
+| math | `HydraRoute \| math \| Final answer only.` | 50 |
+| sentiment | `HydraRoute \| sentiment \| POS/NEG/NEU.` | 4 |
+| summarization | `HydraRoute \| summarize \| Concisely.` | 150 |
+| ner | `HydraRoute \| ner \| JSON entities.` | 150 |
+| code_debugging | `HydraRoute \| debug \| Fixed code only.` | 300 |
+| logical_reasoning | `HydraRoute \| reason \| Step-by-step, end with conclusion.` | 300 |
+| code_generation | `HydraRoute \| code \| Output only the code.` | 300 |
+
+### End-to-End Test (Gemma 4 via OpenRouter — 2026-07-12) ✅ 9/9 PASS
+| Task | Category | Result | Model |
+|------|----------|--------|-------|
+| What is 2+2? | math | 4 | ✅ Tier 0 (0 tokens) |
+| Capital of France? | factual | Paris | ✅ Gemma 26B MoE |
+| I love this! | sentiment | POS | ✅ Tier 0 (0 tokens) |
+| 5 days from 2024-01-15? | math | 2024-01-20 | ✅ Tier 0 (0 tokens) |
+| JSON entities: John at Google NYC | ner | valid JSON | ✅ Gemma 26B MoE |
+| Industrial Revolution summary | text_summarization | concise | ✅ Gemma 26B MoE |
+| All mammals→cats→animals? | logical_reasoning | reasoning | ✅ Gemma 31B |
+| Fix: def add(a b) | code_debugging | fixed code | ✅ Gemma 31B |
+| Prime function | code_generation | valid code | ✅ Gemma 31B |
 
 ### End-to-End Test (OmniRoute API — 2026-07-12)
 | Task | Category | Result | Source |

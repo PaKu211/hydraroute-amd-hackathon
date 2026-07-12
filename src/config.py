@@ -196,68 +196,68 @@ CATEGORY_MODEL_PREFERENCE = {
 CATEGORY_CONFIG = {
     "factual_knowledge": {
         "tier": 1,
-        "system_prompt": f"{CACHE_PREFIX} | factual | Answer concisely. No explanations.",
-        "max_tokens": 200,
-        "temperature": 0.1,
+        "system_prompt": f"{CACHE_PREFIX} | factual | Answer concisely.",
+        "max_tokens": 50,
+        "temperature": 0.0,
     },
     "math": {
-        "tier": 0,  # Zero-cost: Python execution
-        "system_prompt": f"{CACHE_PREFIX} | math | Solve and output only the final answer.",
-        "max_tokens": 150,
+        "tier": 0,
+        "system_prompt": f"{CACHE_PREFIX} | math | Final answer only.",
+        "max_tokens": 50,
         "temperature": 0.0,
     },
     "mathematical_reasoning": {
         "tier": 0,
-        "system_prompt": f"{CACHE_PREFIX} | math | Solve and output only the final answer.",
-        "max_tokens": 150,
+        "system_prompt": f"{CACHE_PREFIX} | math | Final answer only.",
+        "max_tokens": 50,
         "temperature": 0.0,
     },
     "sentiment_classification": {
         "tier": 1,
-        "system_prompt": f"{CACHE_PREFIX} | sentiment | Classify: POS, NEG, or NEU.",
-        "max_tokens": 4,  # Just POS/NEG/NEU + buffer = maximum savings
+        "system_prompt": f"{CACHE_PREFIX} | sentiment | POS/NEG/NEU.",
+        "max_tokens": 4,
         "temperature": 0.0,
     },
     "text_summarization": {
         "tier": 1,
-        "system_prompt": f"{CACHE_PREFIX} | summarize | Summarize this text concisely.",
-        "max_tokens": 300,
+        "system_prompt": f"{CACHE_PREFIX} | summarize | Concisely.",
+        "max_tokens": 150,
         "temperature": 0.3,
     },
     "ner": {
         "tier": 1,
-        "system_prompt": f"{CACHE_PREFIX} | ner | Extract named entities as JSON.",
+        "system_prompt": f"{CACHE_PREFIX} | ner | JSON entities.",
         "max_tokens": 150,
         "temperature": 0.0,
     },
     "named_entity_recognition": {
         "tier": 1,
-        "system_prompt": f"{CACHE_PREFIX} | ner | Extract named entities as JSON.",
+        "system_prompt": f"{CACHE_PREFIX} | ner | JSON entities.",
         "max_tokens": 150,
         "temperature": 0.0,
     },
     "code_debugging": {
         "tier": 2,
-        "system_prompt": f"{CACHE_PREFIX} | debug | Fix this code. Output only the corrected code.",
-        "max_tokens": 500,
+        "system_prompt": f"{CACHE_PREFIX} | debug | Fixed code only.",
+        "max_tokens": 300,
         "temperature": 0.1,
     },
     "logical_reasoning": {
         "tier": 2,
-        "system_prompt": f"{CACHE_PREFIX} | reason | Solve step-by-step, ending with the final conclusion.",
-        "max_tokens": 500,
+        "system_prompt": f"{CACHE_PREFIX} | reason | Step-by-step, end with conclusion.",
+        "max_tokens": 300,
         "temperature": 0.1,
     },
     "deductive_reasoning": {
         "tier": 2,
-        "system_prompt": f"{CACHE_PREFIX} | reason | Solve step-by-step, ending with the final conclusion.",
-        "max_tokens": 500,
+        "system_prompt": f"{CACHE_PREFIX} | reason | Step-by-step, end with conclusion.",
+        "max_tokens": 300,
         "temperature": 0.1,
     },
     "code_generation": {
         "tier": 2,
-        "system_prompt": f"{CACHE_PREFIX} | code | Write code to solve this. No explanations.",
-        "max_tokens": 500,
+        "system_prompt": f"{CACHE_PREFIX} | code | Output only the code.",
+        "max_tokens": 300,
         "temperature": 0.1,
     },
 }
@@ -265,8 +265,8 @@ CATEGORY_CONFIG = {
 # Default config for unknown categories
 DEFAULT_CATEGORY_CONFIG = {
     "tier": 1,
-    "system_prompt": f"{CACHE_PREFIX} | answer | Answer concisely and accurately.",
-    "max_tokens": 300,
-    "temperature": 0.2,
+    "system_prompt": f"{CACHE_PREFIX} | answer | Answer concisely.",
+    "max_tokens": 150,
+    "temperature": 0.1,
     "fallback_tier": 2,
 }
