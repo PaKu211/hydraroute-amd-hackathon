@@ -55,9 +55,16 @@ Tier 0 (Local Solvers) → Tier 1 (Small Model) → Tier 2 (Large Model)
 | What is the capital of France? | factual | Paris. | ✅ Tier 1 API |
 | Classify: I love this! | sentiment | POS | ✅ Tier 0 |
 | 5 days from 2024-01-15? | math | 2024-01-20 | ✅ Tier 0 |
-| Extract entities: John at Google NYC | ner | JSON | ✅ Tier 1 API |
+| Extract entities: John at Microsoft Seattle | ner | JSON | ✅ Tier 1 API |
 | Summarize: quick brown fox | text_summarization | ok | ✅ Tier 1 API |
 | All cats are mammals... Is Whiskers animal? | logical_reasoning | reasoning output | ✅ Self-consistency |
+
+### Key Learnings
+- **OmniRoute API**: model `oc/deepseek-v4-flash-free` returns content in `content` field (not `reasoning_content`) when `thinking=disabled` is set
+- **`reasoning_effort=none` NOT supported** on OmniRoute → causes 400 errors. Use `thinking=disabled` instead
+- **Assistant pre-fill NOT supported** on this model → returns empty response
+- **Prompt tokens are normal** (~89 for simple tasks, no system prompt inflation)
+- **System prompt causes no issues** with `thinking=disabled`
 
 ### Docker Build
 - Platform: `linux/amd64`
