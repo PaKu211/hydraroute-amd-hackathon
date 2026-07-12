@@ -31,6 +31,8 @@ Tier 0 (Local Solvers) → Tier 1 (Small Model) → Tier 2 (Large Model)
 | **OmniRoute API** | ✅ | `oc/deepseek-v4-flash-free`, `thinking=disabled` via extra_body |
 | **Gemma 4 Integration (new)** | ✅ | `google/gemma-4-31b-it` (Tier 2) + `google/gemma-4-26b-a4b-it` (Tier 1) via OpenRouter |
 | **Target: Best Use of Gemma Award** | 🎯 | $1,000 prize — Track 1. Gemma models prioritized in routing + documented strategy |
+| **OpenRouter verbosity=low** (new) | ✅ | Suppresses verbose output, saves 40-80% completion tokens |
+| **Relevance Compression SAFETY** | ✅ | Disabled for logical_reasoning/math (prevents logical structure destruction) |
 | **SymPy-LLM Symbiosis** | ✅ | LLM translates word problem → SymPy solves locally. 100% accuracy |
 | **Session Dedup** | ✅ | Same-category tasks sharing >80 char context → batched single API call |
 | **Relevance Compression** | ✅ | TF-IDF extractive scoring for factual/summarization, keeps top 60% sentences |
