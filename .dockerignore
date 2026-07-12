@@ -7,7 +7,8 @@ __pycache__
 research/
 output/
 input/
-scripts/
+scripts/*.sh
+scripts/*.md
 .dockerignore
 docker-compose.yml
 README.md
