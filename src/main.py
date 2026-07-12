@@ -71,6 +71,13 @@ def process_single_task(
     logger.info("── Task %d/%d: %s [%s] ──", index, total, task_id, category)
     task_start = time.time()
 
+    # Unicode sanitization on instruction (strip control chars to prevent parser bugs)
+    instruction = task.get("instruction", "")
+    import re as _re
+
+    instruction = _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", instruction)
+    task["instruction"] = instruction
+
     # Batched task: multiple subtasks sharing context
     if "_subtasks" in task:
         from src.router import route_batch

@@ -20,14 +20,19 @@ SAFE_EVAL_PATTERN = re.compile(r"^[\d\s\+\-\*/\.\(\)%]+$")
 
 def execute(instruction: str) -> str | None:
     text = instruction.strip()
+    # Unicode sanitization: strip non-ASCII control chars to prevent parser bugs
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
     result = (
         _try_solve_equation(text)
         or _try_percentage(text)
         or _try_arithmetic(text)
         or _try_date_math(text)
+        or _try_word_analysis(text)
         or _try_string_ops(text)
         or _try_unit_conversion(text)
         or _try_regex_extraction(text)
+        or _try_factual_lookup(text)
+        or _try_number_conversion(text)
         or _try_simple_classification(text)
     )
     if result is not None:
@@ -763,6 +768,181 @@ def _try_simple_classification(text: str) -> str | None:
         return "NEG"
     if neu and not pos and not neg:
         return "NEU"
+
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# Factual Dictionary Lookup
+# ═══════════════════════════════════════════════════════════════
+
+_FACTUAL_KNOWLEDGE: dict[str, str] = {
+    # Capitals
+    "capital of france": "Paris",
+    "france capital": "Paris",
+    "capital of japan": "Tokyo",
+    "japan capital": "Tokyo",
+    "capital of germany": "Berlin",
+    "germany capital": "Berlin",
+    "capital of italy": "Rome",
+    "italy capital": "Rome",
+    "capital of spain": "Madrid",
+    "spain capital": "Madrid",
+    "capital of uk": "London",
+    "capital of england": "London",
+    "england capital": "London",
+    "capital of australia": "Canberra",
+    "australia capital": "Canberra",
+    "capital of india": "New Delhi",
+    "india capital": "New Delhi",
+    "capital of china": "Beijing",
+    "china capital": "Beijing",
+    "capital of russia": "Moscow",
+    "russia capital": "Moscow",
+    "capital of canada": "Ottawa",
+    "canada capital": "Ottawa",
+    "capital of brazil": "Brasília",
+    "brazil capital": "Brasília",
+    "capital of indonesia": "Jakarta",
+    "indonesia capital": "Jakarta",
+    # Planets
+    "closest planet to the sun": "Mercury",
+    "farthest planet from the sun": "Neptune",
+    "largest planet": "Jupiter",
+    "planet with the most moons": "Saturn",
+    # Elements
+    "chemical symbol for water": "H2O",
+    "chemical formula for water": "H2O",
+    "atomic number of hydrogen": "1",
+    "atomic number of carbon": "6",
+    "atomic number of oxygen": "8",
+    "atomic number of gold": "79",
+    "atomic number of iron": "26",
+    # Science
+    "speed of light": "299,792,458 m/s",
+    "boiling point of water": "100°C",
+    "freezing point of water": "0°C",
+    "gravity on earth": "9.81 m/s²",
+}
+
+_ROMAN_MAP = [
+    (1000, "M"),
+    (900, "CM"),
+    (500, "D"),
+    (400, "CD"),
+    (100, "C"),
+    (90, "XC"),
+    (50, "L"),
+    (40, "XL"),
+    (10, "X"),
+    (9, "IX"),
+    (5, "V"),
+    (4, "IV"),
+    (1, "I"),
+]
+
+
+def _try_factual_lookup(text: str) -> str | None:
+    """Look up common factual knowledge from a local dictionary.
+    Zero tokens, covers capitals, planets, elements, basic science.
+    """
+    lower = re.sub(r"[^a-z0-9\s]", "", text.lower()).strip()
+    if not lower:
+        return None
+    # Check exact and contained in keys
+    for key, val in _FACTUAL_KNOWLEDGE.items():
+        if key in lower:
+            return val
+    return None
+
+
+def _try_word_analysis(text: str) -> str | None:
+    """Analyze word properties: count vowels, consonants, words, sentences.
+    Matches patterns like 'count vowels in ...', 'how many words in ...'
+    """
+    lower = text.lower()
+
+    # Count vowels
+    m = re.search(
+        r"(?:count|how many)\s+(?:vowels?|vocal)\s+(?:in|in the|in the word|in the string)\s+['\"]?(.+?)['\"]?(?:\?|$|\.)",
+        lower,
+    )
+    if m:
+        target = m.group(1).strip().rstrip("?.,! ")
+        vowels = sum(1 for c in target.lower() if c in "aeiou")
+        return str(vowels)
+
+    # Count consonants
+    m = re.search(
+        r"(?:count|how many)\s+consonants?\s+(?:in|in the|in the word|in the string)\s+['\"]?(.+?)['\"]?(?:\?|$|\.)",
+        lower,
+    )
+    if m:
+        target = m.group(1).strip().rstrip("?.,! ")
+        consonants = sum(1 for c in target.lower() if c.isalpha() and c not in "aeiou")
+        return str(consonants)
+
+    # Count words
+    m = re.search(
+        r"(?:count|how many)\s+words?\s+(?:in|in the|in the sentence|in the string)\s+['\"]?(.+?)['\"]?(?:\?|$|\.)",
+        lower,
+    )
+    if m:
+        target = m.group(1).strip().rstrip("?.,! ")
+        word_count = len(target.split())
+        return str(word_count)
+
+    # Count sentences
+    m = re.search(
+        r"(?:count|how many)\s+sentences?\s+(?:in|in the|in the text)\s+['\"]?(.+?)['\"]?(?:\?|$|\.)",
+        lower,
+    )
+    if m:
+        target = m.group(1).strip().rstrip("?.,! ")
+        sentences = len(re.findall(r"[.!?]+", target)) or 1
+        return str(max(1, target.count(".") + target.count("!") + target.count("?")))
+
+    return None
+
+
+def _try_number_conversion(text: str) -> str | None:
+    """Convert numbers between decimal, binary, hex, and Roman numerals.
+    Matches 'convert 42 to binary', 'what is FF in decimal', '42 in roman'
+    """
+    lower = text.lower()
+
+    # Decimal to binary
+    m = re.search(r"(?:convert|what is)\s+(\d+)\s+(?:to|in)\s+binary", lower)
+    if m:
+        return bin(int(m.group(1)))[2:]
+
+    # Binary to decimal
+    m = re.search(r"(?:convert|what is)\s+([01]+)\s+(?:to|in)\s+decimal", lower)
+    if m:
+        return str(int(m.group(1), 2))
+
+    # Decimal to hex
+    m = re.search(r"(?:convert|what is)\s+(\d+)\s+(?:to|in)\s+hex(?:adecimal)?", lower)
+    if m:
+        return hex(int(m.group(1)))[2:].upper()
+
+    # Hex to decimal
+    m = re.search(r"(?:convert|what is)\s+([0-9a-fA-F]+)\s+(?:to|in)\s+decimal", lower)
+    if m:
+        return str(int(m.group(1), 16))
+
+    # Decimal to Roman
+    m = re.search(r"(?:convert|what is)\s+(\d+)\s+(?:to|in)\s+roman", lower)
+    if m:
+        num = int(m.group(1))
+        if num < 1 or num > 3999:
+            return None
+        result = ""
+        for val, sym in _ROMAN_MAP:
+            while num >= val:
+                result += sym
+                num -= val
+        return result
 
     return None
 

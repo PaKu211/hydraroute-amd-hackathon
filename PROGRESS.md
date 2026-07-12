@@ -33,7 +33,22 @@ Tier 0 (Local Solvers) → Tier 1 (Small Model) → Tier 2 (Large Model)
 | **Session Dedup (new)** | ✅ | Same-category tasks sharing >80 char context → batched single API call |
 | **Relevance Compression (new)** | ✅ | TF-IDF extractive scoring for factual/summarization, keeps top 60% sentences |
 
-### Tier-0 Local Solvers (7 modules)
+### Tier-0 Local Solvers (11 modules)
+| Solver | Coverage | Status |
+|--------|----------|--------|
+| Arithmetic (`_try_arithmetic`) | Simple arithmetic eval | ✅ Requires operator in expr |
+| Percentage (`_try_percentage`) | X% of Y | ✅ |
+| SymPy equations (`_try_solve_equation`) | Algebraic equations | ✅ |
+| Date math (`_try_date_math`) | `X days from DATE`, days between | ✅ |
+| Word analysis (`_try_word_analysis`) | Count vowels/consonants/words/sentences | ✅ NEW |
+| String ops (`_try_string_ops`) | Palindrome, reverse, length, count | ✅ |
+| Unit conversion (`_try_unit_conversion`) | km↔miles, kg↔lbs, C↔F, etc. | ✅ |
+| Regex extraction (`_try_regex_extraction`) | Email, phone, URL extraction | ✅ |
+| Factual lookup (`_try_factual_lookup`) | Capitals, elements, planets, science facts | ✅ NEW |
+| Number conversion (`_try_number_conversion`) | Decimal↔binary↔hex↔Roman numerals | ✅ NEW |
+| Simple classification (`_try_simple_classification`) | POS/NEG/NEU sentiment (short texts) | ✅ |
+
+Total: 11 solver modules (matching 325 Agent's 11 solvers)
 | Solver | Coverage | Status |
 |--------|----------|--------|
 | Arithmetic (`_try_arithmetic`) | Simple arithmetic eval | ✅ Requires operator in expr |
