@@ -240,6 +240,7 @@ class PromptCompressor:
             compressed = self.compress_rtk(compressed)
 
         # 4. Relevance compression - extractive sentence scoring for long-context tasks
+        # SAFETY: Never apply to reasoning/math tasks — could destroy logical structure
         if category in ("text_summarization", "factual_knowledge"):
             compressed = self.compress_relevance(compressed, instruction)
 
