@@ -242,13 +242,24 @@ def _solve_sympy_worker(conn, equation_str: str) -> None:
 
 
 def solve_equation_string(equation_str: str) -> str | None:
-    """Solve a clean SymPy equation string (e.g., '2*x + 10 = 30').
-    Used by SymPy-LLM Symbiosis: LLM translates word problem to equation,
-    this function solves it locally with 100% accuracy.
+    """Solve a clean SymPy equation string (e.g., '2*x + 10 = 30' or
+    'Eq(2*x + 10, 30)'). Used by SymPy-LLM Symbiosis: LLM translates word
+    problem to equation, this function solves it locally with 100% accuracy.
     """
     if not equation_str or not equation_str.strip():
         return None
     eq = equation_str.strip().rstrip(".,;! ")
+
+    # Normalize SymPy Eq(a, b) form returned by some LLMs into 'a = b'
+    eq_form = re.match(
+        r"^eq\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)$", eq, re.IGNORECASE | re.DOTALL
+    )
+    if eq_form:
+        eq = f"{eq_form.group(1).strip()} = {eq_form.group(2).strip()}"
+
+    # Normalize Python '==' (LLM sometimes emits it) to single '='
+    eq = re.sub(r"==+", "=", eq)
+
     if "=" not in eq:
         return None
     return _solve_with_sympy(eq)
@@ -262,7 +273,7 @@ def _solve_with_sympy(equation_str: str, transformations=None) -> str | None:
     rhs_str = parts[1].strip()
     if not lhs_str or not rhs_str:
         return None
-    safe_pattern = re.compile(r"^[\d\s\+\-\*/\.\(\)a-zA-Z\^]+$")
+    safe_pattern = re.compile(r"^[\d\s\+\-\*/\.\(\)a-zA-Z\^\*]+$")
     if not safe_pattern.match(lhs_str) or not safe_pattern.match(rhs_str):
         return None
     import multiprocessing

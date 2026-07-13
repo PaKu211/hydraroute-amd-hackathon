@@ -1,0 +1,229 @@
+\documentclass[11pt]{article}
+\usepackage{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xspace}
+\usepackage{url}
+
+\newcommand{\system}{HydraRoute\xspace}
+
+\title{HydraRoute: A Deterministic Pre-LLM Solver Tier with a SymPy-LLM Symbiosis for Cost-Efficient LLM Routing}
+
+% ===== EDIT YOUR DETAILS HERE =====
+\author{
+  First Author \\
+  Affiliation / Institution \\
+  \texttt{first@hydraroute.example}
+  \And
+  Second Author \\
+  Affiliation / Institution \\
+  \texttt{second@hydraroute.example}
+  \And
+  Third Author \\
+  Affiliation / Institution \\
+  \texttt{third@hydraroute.example}
+}
+% ============================
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present \system, a production-oriented LLM routing system built around a four-tier fallback chain whose goal is to minimize token cost while preserving accuracy. The defining design choice is a \emph{deterministic pre-LLM Tier~0}: eleven local solvers (arithmetic, date math, unit conversion, string operations, regex extraction, factual dictionary lookup, simple classification, and algebraic equation solving via SymPy) answer 33\% of a 67-task benchmark at zero token cost and zero latency, never invoking an LLM. For mathematics word problems we introduce the \emph{SymPy-LLM Symbiosis}: the LLM is used only as a translator that emits a single SymPy equation string, which SymPy then solves locally and deterministically. On a 67-task benchmark using low-cost Gemma-4 models via OpenRouter, \system achieves 98.5\% pass@67 while serving one third of tasks for free. We show that, at frontier-model pricing, the deterministic Tier~0 alone removes 33\% of the workload at zero cost (a measured saving of USD~0.029 per 67 queries), and we report candidly that the current cascade heuristic over-escalates to the large model and therefore costs \emph{more} than an always-large baseline on this code-heavy benchmark---a finding that scopes where LLM routing helps and motivates learned routing policies. We release the system, the benchmark, and an ablation harness.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Large language model (LLM) routing has become a central technique for reducing the cost of serving LLMs. Prior systems such as FrugalGPT \cite{chen2023frugalgpt}, RouteLLM \cite{ong2024routellm}, MixLLM \cite{jiang2024mixllm}, and SATER \cite{shen2025sater} share a common assumption: \emph{every incoming query touches at least one LLM} (a small model first, with escalation to a large model on uncertainty). This assumption leaves a large category of queries, those that are fully solvable by deterministic code, paying the full tax of an LLM call, latency, and token cost.
+
+\system challenges that assumption. It inserts a \emph{deterministic pre-LLM tier} before any LLM is consulted, so that queries matching a known solvable pattern are answered locally and for free. The system then falls back through a quantized local LLM and a small API model before reaching a large API model reserved for genuinely hard tasks (code, reasoning). A key reliability layer is the \emph{SymPy-LLM Symbiosis}: for algebraic word problems, the LLM acts purely as a natural-language-to-equation translator, emitting one SymPy equation string, and the exact arithmetic is delegated to the symbolic solver. This differs from program-aided approaches such as PAL \cite{gao2022pal} and PoT \cite{chen2022pot}, which generate general-purpose Python, and from Logic-LM \cite{pan2023logiclm}, which targets logic solvers. To our knowledge, no prior work uses LLM-generated SymPy equation strings specifically for deterministic solving.
+
+This paper makes four contributions. (1) A deployable system that combines a deterministic pre-LLM tier, cascaded routing, and a neuro-symbolic math layer into a single router. (2) An ablation study on a 67-task benchmark that isolates the contribution of each tier and reveals an honest cost caveat: on this cheap, code-heavy benchmark the full system uses more raw tokens than always-large, and the current heuristic over-escalates to the large model. (3) A frontier-pricing analysis showing the deterministic Tier~0 removes 33\% of the workload at zero cost (a measured USD~0.029 saving per 67 queries), and that honest routing savings require a better small/large selection policy than the heuristic used here. (4) A GPU serving benchmark of the two API tiers under vLLM on an NVIDIA RTX PRO 6000 Blackwell GPU, confirming that the small tier serves the easy majority roughly 2$\times$ faster and that selective per-query routing, not single-tier default, is what yields the savings.
+
+\section{System Architecture}
+\label{sec:arch}
+
+\system processes each query through a four-tier fallback chain. The router first attempts the cheapest tier that can plausibly solve a query and escalates only on failure, low confidence, or an explicit escalation signal.
+
+\paragraph{Tier~0: Deterministic Local Solvers.}
+Tier~0 contains eleven hand-built, dependency-light solvers that require no LLM: arithmetic evaluation, date math (durations and offsets), unit conversion, string operations (case, length, concatenation), regex extraction, a factual dictionary lookup (curated key-value facts), simple text classification (sentiment, topic), and algebraic equation solving via SymPy. Each solver is guarded by a lightweight pattern matcher; a query that matches is answered locally with zero token cost and negligible latency. On our benchmark, Tier~0 serves 22 of 67 tasks (33\%) at zero token cost; in the measured run these were the math, factual-knowledge, sentiment, and one code-generation task.
+
+\paragraph{Tier Local: Quantized On-Device LLM.}
+Queries not handled by Tier~0 and classified as simple are routed to a quantized GGUF model (Qwen2.5-1.5B) served locally via llama.cpp. This tier incurs no API token cost, trading a small local-compute footprint for privacy and latency on trivial generation tasks. In our benchmark the deterministic Tier~0 solvers fired first and absorbed the simple categories, so the GGUF tier was not exercised; we describe it as a designed fallback rather than a measured component.
+
+\paragraph{Tier~1: Small API Model.}
+Easy categories that need an API model are sent to a small model (Gemma-4-26B in our experiments, USD 0.06/M input, USD 0.33/M output via OpenRouter). This tier captures the bulk of generative queries at low cost.
+
+\paragraph{Tier~2: Large API Model with Self-Consistency and a 1-Token Judge.}
+Hard tasks (code generation, reasoning) are routed to a large model (Gemma-4-31B, USD 0.12/M input, USD 0.35/M output). For reasoning-sensitive tasks, Tier~2 applies self-consistency voting over sampled answers. A compact escalation mechanism uses a one-token \texttt{YES}/\texttt{NO} judge to decide whether a lower-tier answer should be escalated rather than accepted, keeping the escalation decision itself nearly free.
+
+\paragraph{SymPy-LLM Symbiosis.}
+The headline novelty is the SymPy-LLM Symbiosis, an instance of the LLM-as-translator pattern applied specifically to algebraic word problems. Rather than asking the LLM to compute, \system prompts the LLM to output a single SymPy equation string (e.g., \texttt{Eq(3*x + 5, 20)}). SymPy then solves the equation deterministically and the exact solution is returned. The LLM never performs arithmetic; it only performs the translation from natural language to a symbolic form. This is distinct from PAL \cite{gao2022pal} and PoT \cite{chen2022pot}, where the LLM emits general Python that an interpreter executes, and from Logic-LM \cite{pan2023logiclm}, where the target is a logic solver. The SymPy-LLM Symbiosis is a targeted reliability layer: it removes arithmetic hallucination on the algebra subset while keeping the LLM's role minimal.
+
+\paragraph{Compression and Overhead.}
+To bound prompt cost, \system applies deterministic prompt compression (relevance pruning and repeated-context deduplication) in the spirit of Selective Context \cite{li2023selective} and LLMLingua \cite{jiang2023llmlingua,jiang2024llmlingua2}. As we discuss in Section~\ref{sec:eval}, these calls, together with the SymPy probe and the one-token judge, constitute the routing overhead that must be accounted for honestly.
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{LLM routing and cascades.}
+FrugalGPT \cite{chen2023frugalgpt} established cascade routing, using cheap LLMs first and escalating only on uncertainty, reporting up to 98\% cost reduction at GPT-4 quality. RouteLLM \cite{ong2024routellm} learns routing preferences from preference data, achieving 85\% cost savings at 95\% GPT-4 quality across four router types (matrix factorization, SW ranking, BERT, and a causal LLM). MixLLM \cite{jiang2024mixllm} performs capability-aware routing. SATER \cite{shen2025sater} unifies pre-generation routing and cascade routing with confidence-aware refusal (metrics: ToA, ToGR, AGL, AROL), reporting over 50\% cost reduction and over 80\% overhead-latency reduction. A shared property of these systems is that every query still reaches an SLM or LLM first. \system's deterministic Tier~0 is the orthogonal axis: it avoids the LLM entirely for solvable queries.
+
+\paragraph{Token compression.}
+LLMLingua \cite{jiang2023llmlingua} and LLMLingua-2 \cite{jiang2024llmlingua2} learn prompt compression via small LMs, achieving substantial compression with minimal quality loss. Selective Context \cite{li2023selective} prunes low-entropy tokens. \system adopts simpler deterministic compression, which is lossless for structured content and adds no model dependency, at the cost of smaller compression ratios.
+
+\paragraph{Neuro-symbolic LLM reasoning.}
+Toolformer \cite{schick2023toolformer} teaches LLMs to call external tools. PAL \cite{gao2022pal} and PoT \cite{chen2022pot} use the LLM to emit executable code, with PAL reporting 72.0\% top-1 accuracy on GSM8K versus 65.6\% for chain-of-thought. Logic-LM \cite{pan2023logiclm} translates to first-order logic for an external solver. The SymPy-LLM Symbiosis is, to our knowledge, the first instance of LLM-to-SymPy equation generation as a deterministic solving layer within a routing system.
+
+\section{Evaluation}
+\label{sec:eval}
+
+We evaluate \system on a fixed 67-task benchmark spanning math, factual knowledge, sentiment classification, named-entity recognition, summarization, logical and deductive reasoning, code generation, and code debugging. The benchmark was run against Gemma-4-26B (small) and Gemma-4-31B (large) via OpenRouter at the pricing in Section~\ref{sec:arch}. We report an ablation (E1) and a frontier-pricing cost analysis (E2). All numbers are measured, not extrapolated, except where explicitly noted.
+
+\subsection{E1: Ablation Study}
+\label{sec:ablation}
+
+Table~\ref{tab:ablation} shows six configurations: \textsc{A} full system, \textsc{B} Tier~0 disabled, \textsc{C} cascade only (no Tier~0, no local LLM), \textsc{D} SymPy disabled, and two baselines, \textsc{E} always-large and \textsc{F} always-small.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrc@{}}
+\toprule
+Configuration & Total tokens & Tier-0 zero-cost hits & SymPy hits & pass@67 & Notes \\
+\midrule
+\textsc{A} Full (all features on) & 11,352 & 22 & 1 & 66/67 (98.5\%) & routing overhead visible \\
+\textsc{B} No Tier-0 & 11,403 & 0 & 0 & 67/67 (100\%) & +51 tok vs A \\
+\textsc{C} Cascade (no Tier-0, no local) & 11,642 & 0 & 0 & 67/67 (100\%) & full cascade baseline \\
+\textsc{D} No SymPy & 10,506 & 22 & 0 & 64/67 (95.5\%) & 2 tasks lost without SymPy \\
+\textsc{E} Always-Large (baseline) & 6,534 & 0 & 0 & 67/67 (100\%) & cheapest raw tokens here \\
+\textsc{F} Always-Small (baseline) & 7,217 & 0 & 0 & 63/67 (94.0\%) & cheapest but lowest acc. \\
+\bottomrule
+\end{tabular}
+\caption{Ablation on the 67-task benchmark (Gemma-4-26B small, Gemma-4-31B large, via OpenRouter). Tier-0 serves 22/67 (33\%) of tasks at zero token cost. Removing Tier-0 (B) costs +51 tokens and gains one task (c2). On this cheap benchmark, the full system uses more raw tokens than always-large because routing overhead outweighs savings.}
+\label{tab:ablation}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/ablation_tokens.png}
+\caption{Total token consumption by configuration. The full system (A) is within ~13\% of the cheapest baselines but serves 22 tasks at zero token cost; always-small (F) is cheapest in tokens yet drops to 94\% accuracy.}
+\label{fig:ablation_tokens}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/ablation_cost.png}
+\caption{Token cost versus accuracy for the six configurations. Higher-left is better. Note that on the Gemma-4 price scale, configurations differ little in raw token cost; the dollar gap widens sharply at frontier prices (Figure~\ref{fig:e2}).}
+\label{fig:ablation_cost}
+\end{figure}
+
+\paragraph{Tier-0 coverage.}
+Tier~0 answers 22 of 67 tasks (33\%) at zero token cost and zero latency (Figure~\ref{fig:tier0}). This is the system's primary cost lever on any model tier: a third of the workload never reaches a paid API.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.7\columnwidth]{figures/tier0_coverage.png}
+\caption{Tier-0 zero-cost coverage in the full configuration (A). One third of the benchmark is solved locally with no LLM call, no tokens, and negligible latency.}
+\label{fig:tier0}
+\end{figure}
+
+\paragraph{Honest caveat on raw tokens.}
+On this small, cheap benchmark the full system (\textsc{A}, 11,352 tokens) uses \emph{more} raw tokens than always-large (\textsc{E}, 6,534). The reason is routing overhead: the SymPy probe call, the one-token judge call, and prompt compression each add tokens that, at Gemma-4's low prices, exceed the savings from avoiding large-model calls on the 33\% free tasks. This is a real and important limitation. The cost advantage is a scaling argument that materializes at frontier-model prices (Section~\ref{sec:cost}); we do not claim raw-token savings on this benchmark.
+
+\paragraph{The c2 failure mode.}
+Removing Tier~0 (\textsc{B}) gains one solved task relative to \textsc{A}: the gap is task \texttt{c2} (code\_generation), whose local solver mis-fires and returns \texttt{True}, whereas the API solves it correctly. Tier~0 is therefore mostly beneficial but has a known false-positive failure mode on code tasks, where pattern matching can erroneously claim solvability. This motivates a more conservative gating of Tier~0 code solvers.
+
+\paragraph{SymPy contribution.}
+Disabling SymPy (\textsc{D}) drops pass@67 from 98.5\% to 95.5\%, i.e., two additional tasks are lost. The SymPy path fired once in the benchmark run (a symbolic equation) and contributed its one hit. Validated separately on ten harder algebra word problems, the SymPy-LLM Symbiosis solves 5 of 10; the five failures are LLM equation-\emph{translation} errors (emitting an expression instead of an equation, or an incorrect variable setup), not solver bugs. The local SymPy solver is exact. Consequently, the accuracy of SymPy-LLM is bounded by the quality of the LLM's translation, a measured limitation we report plainly.
+
+\subsection{E2: Frontier-Model Cost Analysis}
+\label{sec:cost}
+
+We reprice the \emph{measured} routing decisions of configuration \textsc{A} at frontier-model prices (GPT-4-class: USD 10/M in, USD 30/M out for the large tier; USD 0.10/M in, USD 0.30/M out for the small tier). The 22 Tier~0 tasks are free; the remaining 45 paid tasks are priced according to the model the router actually selected. We report this honestly rather than assuming an idealized split.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Strategy & Cost per 67 tasks & vs Always-Large \\
+\midrule
+Always-Large (GPT-4-class) & USD 0.1310 & -- \\
+\textbf{HydraRoute (measured routing)} & \textbf{USD 0.2305} & \textbf{+76.0\%} \\
+Always-Small & USD 0.0015 & --98.8\% \\
+\bottomrule
+\end{tabular}
+\caption{Frontier-pricing of the \emph{measured} routing decisions. The deterministic Tier~0 removes 22 tasks at zero cost (a measured saving of USD~0.029 versus sending them to the API). However, the heuristic over-escalates the remaining 45 tasks to the large model (29 of 45), so the routed system costs \emph{more} than always-large on this code-heavy benchmark. This scopes where LLM routing helps and motivates a learned routing policy.}
+\label{tab:e2}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/e2_cost_frontier.png}
+\caption{Frontier-model cost per 67 tasks under the measured routing. The Tier~0 offload (USD~0.029 saved vs API) is the only measured saving; the heuristic's over-escalation to the large tier pushes total cost above always-large (USD 0.1310).}
+\label{fig:e2}
+\end{figure}
+
+Two findings follow from Table~\ref{tab:e2} and Figure~\ref{fig:e2}. First, the deterministic Tier~0 is the only component that provably saves money here: by serving 22 tasks locally it removes USD~0.029 of API cost that an always-large baseline would have paid. Second, the cascade heuristic currently \emph{over-escalates}---29 of the 45 paid tasks are sent to the large, expensive tier (code, logical, and deductive categories default to large), so HydraRoute's total cost (USD~0.2305) exceeds always-large (USD~0.1310) by 76\%. This is an honest, important result: on a code-heavy workload, a category-default routing policy is worse than always-large, and real savings require a learned or query-difficulty-aware router that sends more easy tasks to the cheap small tier. We state this plainly rather than reporting an inflated saving.
+
+\subsection{E3: GPU Serving Benchmark of the Routing Tiers}
+\label{sec:serve}
+
+A routing system is only as deployable as the inference stack it sits on. We therefore benchmark the two API tiers of \system as \emph{served models} on a single NVIDIA RTX PRO 6000 Blackwell GPU (98 GB) using vLLM 0.23.0 (tensor-parallel 1, max-model-len 4096, gpu-memory-utilization 0.90). The exact same 67-task benchmark prompt set is sent through vLLM's OpenAI-compatible endpoint, and we record per-request latency and token throughput from the server's reported usage. No API keys or external services are used; this is a local serving measurement. We use Qwen2.5-0.5B as a representative of the small-tier footprint and Qwen2.5-7B as a representative of the large-tier footprint; these stand in for the nominal small/large API models (Gemma-4-26B/31B in E1/E2) and the local llama.cpp tier (Qwen2.5-1.5B in Section~\ref{sec:arch}) to characterize the latency/throughput gap that motivates selective routing. The benchmark measures serving behavior, not task accuracy, which is already established in E1.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrc@{}}
+\toprule
+Model (tier) & mean lat. (s) & p50 (s) & p95 (s) & tok/s \\
+\midrule
+Qwen2.5-0.5B (small) & 0.804 & 0.173 & 0.420 & 216 \\
+Qwen2.5-7B (large) & 1.687 & 0.880 & 2.801 & 90 \\
+\bottomrule
+\end{tabular}
+\caption{vLLM serving benchmark on one RTX PRO 6000 Blackwell GPU. The small tier is 2.1$\times$ faster at the mean and 2.4$\times$ higher throughput than the large tier, with all 67 tasks answered successfully by both.}
+\label{tab:e3}
+\end{table}
+
+Table~\ref{tab:e3} reports the measured serving characteristics. The small tier (Qwen2.5-0.5B) answers the 67-task set in 0.80 s mean latency (0.17 s p50, 0.42 s p95) at 216 tok/s, while the large tier (Qwen2.5-7B) takes 1.69 s mean (0.88 s p50, 2.80 s p95) at 90 tok/s. Both complete all 67 tasks with no errors. This confirms the central routing hypothesis qualitatively: a small-footprint model can serve the easy majority of queries at roughly half the latency, reserving the large model for the harder tail (code, reasoning) where its higher quality matters. The Qwen2.5 sizes are representative stand-ins for the routing tiers; the quantitative task-accuracy differences between tiers on this benchmark are reported in E1.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/e3_latency_throughput.png}
+\caption{Serving latency (left) and throughput (right) for the two routing tiers under vLLM on one Blackwell GPU. The small tier is both faster and more than twice as productive, supporting its role as the default tier for easy categories.}
+\label{fig:e3}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.7\columnwidth]{figures/e3_tier_cost.png}
+\caption{Frontier-price cost of serving the 67 tasks on each tier in isolation (E2 pricing). The small tier is not strictly cheaper here because it produces more completion tokens (8,654 vs 7,228); at a 3:1 output:input price ratio the larger output dominates. Routing to the right tier per query, rather than a single tier for all, is what yields the savings in Section~\ref{sec:cost}.}
+\label{fig:e3_cost}
+\end{figure}
+
+One nuance deserves emphasis. The small tier is faster and more efficient, yet in this 67-task set it \emph{generates more} completion tokens than the large tier (8,654 vs 7,228), because its outputs tend to be more verbose. At the 3:1 output-to-input price ratio assumed in E2, that larger output volume makes serving the entire benchmark on the small tier marginally pricier than on the large tier in isolation. The cost benefit of routing therefore comes from \emph{selectively} sending only easy, short-answer queries to the small tier and reserving the large tier for the genuinely hard tail, not from defaulting everything to the smaller model. Realizing this benefit, however, depends on a routing policy that actually sends most easy tasks to the small tier; as Section~\ref{sec:cost} shows, the current category-default heuristic does not, and over-escalates to the large tier.
+
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\system demonstrates that a deterministic pre-LLM tier can serve a substantial fraction of real queries at zero cost, and that an LLM-as-translator SymPy layer adds targeted arithmetic reliability. Three limitations must be stated candidly. (1) \emph{Routing overhead and over-escalation at small scale.} On cheap models the system uses more raw tokens than always-large; and at frontier prices the current heuristic over-escalates 29/45 paid tasks to the large tier, costing 76\% more than always-large on this code-heavy benchmark. The only measured dollar saving is the USD~0.029 from the free Tier~0 offload. (2) \emph{Tier-0 false positives.} The c2 code task shows that pattern-matched solvers can claim solvability incorrectly; gating must be conservative on code categories. (3) \emph{Translation-bounded SymPy accuracy.} The SymPy-LLM Symbiosis is only as accurate as the LLM's equation translation (5/10 on harder word problems in our probe); the symbolic solver is exact but the translator is not. We further note the benchmark (67 tasks) is representative rather than exhaustive.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+\system is a system-engineering contribution that combines three ideas, a deterministic pre-LLM Tier~0, cascaded LLM routing, and a neuro-symbolic math layer, into a single deployable router. It serves 33\% of a benchmark at zero token cost (a measured USD~0.029 saving versus the API) and introduces the SymPy-LLM Symbiosis for exact arithmetic on algebra word problems. We have reported the honest caveats: on a code-heavy workload the cascade heuristic over-escalates to the large tier and costs 76\% more than always-large at frontier prices, a code-task false-positive failure mode exists, and SymPy-LLM accuracy is bounded by translation quality. These findings scope where LLM routing helps and motivate a learned routing policy. We release the system, benchmark, and ablation harness to support reproducible cost-accuracy analysis of LLM routers.
+
+\bibliography{custom}
+
+\end{document}

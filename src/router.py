@@ -5,6 +5,7 @@ Implements fallback chains: Tier 0 -> Tier 1 -> Tier 2.
 """
 
 import logging
+import os
 import re
 
 from openai import OpenAI
@@ -14,6 +15,13 @@ from src.token_tracker import TokenTracker
 from src.tiers import tier_zero, tier_one, tier_two
 
 logger = logging.getLogger("hydraroute")
+
+
+# Ablation gates (controlled via env for paper experiments; all default ON).
+# Evaluated at runtime via helper so the ablation harness can toggle them per run.
+def _ablate(name: str) -> bool:
+    return os.environ.get(f"HYDRAROUTE_ABLATE_{name}", "1") != "0"
+
 
 # Map category name variations to canonical names
 CATEGORY_ALIASES: dict[str, str] = {
@@ -419,18 +427,19 @@ def route_task(
     cat_config = get_category_config(normalized_cat)
 
     # ── Step 0: Always try Tier 0 first (zero token cost) ──
-    logger.info("Routing task %s [%s] -> Tier 0 (Local Solvers)", task_id, category)
-    try:
-        answer = tier_zero.execute(instruction)
-        if answer is not None:
-            TokenTracker().record_tier_zero()
-            logger.info("Task %s solved by Tier 0", task_id)
-            return answer
-    except Exception as e:
-        logger.warning("Tier 0 failed for task %s: %s", task_id, e)
+    if _ablate("TIER0"):
+        logger.info("Routing task %s [%s] -> Tier 0 (Local Solvers)", task_id, category)
+        try:
+            answer = tier_zero.execute(instruction)
+            if answer is not None:
+                TokenTracker().record_tier_zero()
+                logger.info("Task %s solved by Tier 0", task_id)
+                return answer
+        except Exception as e:
+            logger.warning("Tier 0 failed for task %s: %s", task_id, e)
 
     # ── Step 1.5: Try local LLM (GGUF) for simple categories (zero tokens) ──
-    if normalized_cat in (
+    if _ablate("LOCAL") and normalized_cat in (
         "sentiment_classification",
         "ner",
         "named_entity_recognition",
@@ -461,17 +470,26 @@ def route_task(
     answer = None
 
     # Apply prompt compression for API calls (Tier 1 & Tier 2)
-    try:
-        from src.compression import PromptCompressor
+    if _ablate("COMPRESS"):
+        try:
+            from src.compression import PromptCompressor
 
-        instruction_optimized = PromptCompressor().optimize(instruction, normalized_cat)
-    except Exception as e:
-        logger.warning("Prompt compression failed: %s", e)
+            instruction_optimized = PromptCompressor().optimize(
+                instruction, normalized_cat
+            )
+        except Exception as e:
+            logger.warning("Prompt compression failed: %s", e)
+            instruction_optimized = instruction
+    else:
         instruction_optimized = instruction
 
     # ── SymPy-LLM Symbiosis: LLM translates word problem → SymPy solves locally ──
     # Zero-risk: LLM only generates equation string, SymPy guarantees correct solution
-    if normalized_cat in ("math", "mathematical_reasoning") and config.large_model:
+    if (
+        _ablate("SYMPY")
+        and normalized_cat in ("math", "mathematical_reasoning")
+        and config.large_model
+    ):
         logger.info("Task %s: Trying SymPy-LLM Symbiosis", task_id)
         try:
             eq_prompt = (
@@ -508,6 +526,7 @@ def route_task(
                 logger.info("SymPy-LLM equation: %s", eq_clean)
                 sympy_answer = tier_zero.solve_equation_string(eq_clean)
                 if sympy_answer is not None:
+                    TokenTracker().record_sympy()
                     TokenTracker().record(
                         task_id=task_id,
                         model=config.large_model,

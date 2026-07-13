@@ -1,0 +1,20 @@
+{
+  "pricing": {
+    "large_in": 10.0,
+    "large_out": 30.0,
+    "small_in": 0.1,
+    "small_out": 0.3
+  },
+  "note": "HONEST recomputation from MEASURED routing decisions (CATEGORY_MODEL_PREFERENCE: code/logical/deductive -> large, rest -> small). Of 45 paid tasks, 16 small + 29 large. The 55% saving in the original version was FALSE.",
+  "measured_routing": {
+    "paid_tasks": 45,
+    "small_tier_tasks": 16,
+    "large_tier_tasks": 29,
+    "tier0_free_tasks": 22
+  },
+  "always_large_usd": 0.1310,
+  "always_small_usd": 0.0015,
+  "hydraroute_usd": 0.2305,
+  "delta_vs_large_pct": 76.0,
+  "tier0_offload_usd": 0.029
+}

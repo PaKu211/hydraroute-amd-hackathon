@@ -39,6 +39,7 @@ class TokenTracker:
         self.per_model: dict[str, TokenUsage] = {}
         self.api_calls: int = 0
         self.tier_zero_hits: int = 0
+        self.sympy_hits: int = 0
 
     def record(
         self,
@@ -74,12 +75,20 @@ class TokenTracker:
 
         logger.debug(
             "Tokens for task %s [%s]: prompt=%d, completion=%d, total=%d",
-            task_id, model, prompt_tokens, completion_tokens, total,
+            task_id,
+            model,
+            prompt_tokens,
+            completion_tokens,
+            total,
         )
 
     def record_tier_zero(self) -> None:
         """Record a successful Tier 0 (zero-cost) execution."""
         self.tier_zero_hits += 1
+
+    def record_sympy(self) -> None:
+        """Record a successful SymPy-LLM Symbiosis solve."""
+        self.sympy_hits += 1
 
     def print_summary(self) -> None:
         """Print a summary of token usage."""
@@ -88,6 +97,7 @@ class TokenTracker:
         print("=" * 60)
         print(f"  Total API calls:      {self.api_calls}")
         print(f"  Tier 0 (free) hits:   {self.tier_zero_hits}")
+        print(f"  SymPy-LLM Solves:     {self.sympy_hits}")
         print(f"  Prompt tokens:        {self.total.prompt_tokens:,}")
         print(f"  Completion tokens:    {self.total.completion_tokens:,}")
         print(f"  Total tokens:         {self.total.total_tokens:,}")
@@ -97,9 +107,11 @@ class TokenTracker:
             for model, usage in sorted(self.per_model.items()):
                 name = model.split("/")[-1] if "/" in model else model
                 print(f"    {name}:")
-                print(f"      prompt={usage.prompt_tokens:,}  "
-                      f"completion={usage.completion_tokens:,}  "
-                      f"total={usage.total_tokens:,}")
+                print(
+                    f"      prompt={usage.prompt_tokens:,}  "
+                    f"completion={usage.completion_tokens:,}  "
+                    f"total={usage.total_tokens:,}"
+                )
 
         total_tasks = len(self.per_task) + self.tier_zero_hits
         if total_tasks > 0:

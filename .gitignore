@@ -13,9 +13,13 @@ venv/
 .venv/
 env/
 
-# Environment variables
+# Local libs installed by agent (sympy/matplotlib for read-only fs)
+.venv_libs/
+
+# Environment variables / secrets
 .env
 .env.local
+*.env
 
 # Output
 output/
@@ -33,3 +37,23 @@ Thumbs.db
 
 # Docker
 *.tar
+
+# Paper build artifacts (LaTeX aux, logs, pdf) - keep source only
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.toc
+paper/*.lof
+paper/*.lot
+paper/paper.pdf
+paper/figures/
+paper/acl.sty
+paper/acl_natbib.bst
+
+# OpenScience agent internals
+.openscience/
+
+# Research scratch / notebooklm raw
+research/notebooklm_*.md
