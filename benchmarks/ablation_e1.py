@@ -148,6 +148,10 @@ def run_config(name, key, model_small, model_large, baseline=None):
     for i, task in enumerate(tasks):
         start = time.time()
         ans = None
+        # snapshot tracker state to attribute this task's outcome
+        t0_hits_before = tracker.tier_zero_hits
+        sympy_hits_before = tracker.sympy_hits
+        per_task_before = len(tracker.per_task)
         if baseline == "always_large":
             ans = _call_model(client, config.large_model, task, config)
         elif baseline == "always_small":
@@ -161,15 +165,40 @@ def run_config(name, key, model_small, model_large, baseline=None):
 
         ok = validate(task, ans)
         passed += 1 if ok else 0
-        # tier0 proxy: zero-token tasks = tracker.tier_zero_hits delta
+
+        # Derive per-task route + model from tracker deltas (reproducible E2).
+        if tracker.tier_zero_hits > t0_hits_before:
+            route = "tier0"
+            model_used = "tier0-free"
+            pt = tracker.per_task.get(task["task_id"], None)
+            pt_prompt = pt.prompt_tokens if pt else 0
+            pt_comp = pt.completion_tokens if pt else 0
+        elif tracker.sympy_hits > sympy_hits_before:
+            route = "sympy"
+            model_used = config.large_model
+            pt = tracker.per_task.get(task["task_id"], None)
+            pt_prompt = pt.prompt_tokens if pt else 0
+            pt_comp = pt.completion_tokens if pt else 0
+        elif len(tracker.per_task) > per_task_before:
+            pt = tracker.per_task.get(task["task_id"], None)
+            route = "api"
+            model_used = pt and pt.model if pt else "?"
+            pt_prompt = pt.prompt_tokens if pt else 0
+            pt_comp = pt.completion_tokens if pt else 0
+        else:
+            route = "api"
+            model_used = "?"
+            pt_prompt = 0
+            pt_comp = 0
+
         rec = {
             "task_id": task["task_id"],
             "category": task["category"],
-            "tier0": tracker.tier_zero_hits,
-            "sympy": tracker.sympy_hits,
-            "prompt_tokens": tracker.total.prompt_tokens,
-            "completion_tokens": tracker.total.completion_tokens,
-            "total_tokens": tracker.total.total_tokens,
+            "route": route,
+            "model": model_used,
+            "prompt_tokens": pt_prompt,
+            "completion_tokens": pt_comp,
+            "total_tokens": pt_prompt + pt_comp,
             "answer": str(ans)[:120],
             "passed": ok,
             "elapsed": round(elapsed, 2),
@@ -178,6 +207,10 @@ def run_config(name, key, model_small, model_large, baseline=None):
 
     return {
         "config": name,
+        "family": {
+            "small": config.small_model,
+            "large": config.large_model,
+        },
         "total_prompt_tokens": tracker.total.prompt_tokens,
         "total_completion_tokens": tracker.total.completion_tokens,
         "total_tokens": tracker.total.total_tokens,
@@ -198,10 +231,68 @@ def main():
     if not keys:
         print("ERROR: set OPENROUTER_KEY_1..4")
         sys.exit(1)
+
+    # Build a failover client pool: rotate across working keys on 402/429 so a
+    # single depleted key (e.g. key2) does not abort the run.
+    import openai as _openai
+
+    clients = []
+    for k in keys:
+        clients.append(
+            _openai.OpenAI(
+                api_key=k,
+                base_url=os.environ.get(
+                    "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+                ),
+            )
+        )
+
+    class FailoverClient:
+        """Thin wrapper that retries the next key on 402/429/5xx."""
+
+        def __init__(self, clients):
+            self._clients = clients
+            self._idx = 0
+
+        def _next(self):
+            c = self._clients[self._idx % len(self._clients)]
+            self._idx += 1
+            return c
+
+        def create(self, *a, **kw):
+            last = None
+            for _ in range(len(self._clients) * 2):
+                c = self._next()
+                try:
+                    return c.chat.completions.create(*a, **kw)
+                except Exception as e:  # noqa: BLE001
+                    msg = str(e)
+                    if "402" in msg or "429" in msg or "5" in msg[:3]:
+                        last = e
+                        continue
+                    raise
+            raise last if last else RuntimeError("all keys failed")
+
+    fo_client = FailoverClient(clients)
+
+    # build_client now returns the failover wrapper
+    def build_client(key):  # noqa: F811
+        return fo_client
+
     key = keys[0]
 
     small = os.environ.get("ABLATE_SMALL", "google/gemma-4-26b-a4b-it")
     large = os.environ.get("ABLATE_LARGE", "google/gemma-4-31b-it")
+
+    # Multi-family support: distinct output file per small/large pair so we
+    # never clobber results when testing generality across model families.
+    family_tag = (
+        os.environ.get("ABLATE_FAMILY", f"{small}__{large}")
+        .replace("/", "_")
+        .replace(":", "_")
+    )
+    os.makedirs("experiments", exist_ok=True)
+    out = os.path.join(ROOT, "experiments", f"ablation_{family_tag}.json")
 
     configs = [
         ("A_full", {}),
@@ -212,14 +303,12 @@ def main():
         ("F_always_small", {}, "always_small"),
     ]
 
-    os.makedirs("experiments", exist_ok=True)
-    out = os.path.join(ROOT, "experiments", "ablation_results.json")
     # Resume: load any previously completed configs
     results = {}
     if os.path.exists(out):
         try:
             results = json.load(open(out))
-            print(f"Resuming — already have: {list(results.keys())}", flush=True)
+            print(f"Resuming {out} — already have: {list(results.keys())}", flush=True)
         except Exception:
             results = {}
 

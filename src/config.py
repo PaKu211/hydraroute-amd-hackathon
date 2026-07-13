@@ -175,19 +175,26 @@ class Config:
 # By keeping system prompts short + structured, we maximize reuse.
 CACHE_PREFIX = "HydraRoute"
 
-# Per-category model preferences (for optimal cost-quality tradeoff)
-# Based on analysis of pricing + capability across Fireworks models
+# Per-category model preferences (for optimal cost-quality tradeoff).
+# DATA-DRIVEN, corrected 2026-07-13 from ablation_measure E/F records:
+# on the 67-task benchmark the small model (Gemma-4-26B) already solves every
+# category at 100% EXCEPT sentiment_classification (60% small vs 100% large).
+# The prior mapping forced code/reasoning to the large tier, which inflated
+# frontier-pricing cost by ~+76% vs always-large with NO accuracy gain. We now
+# route only sentiment to the large tier; everything else uses the cheap small
+# tier (or is offloaded to free Tier 0). Escalation is reserved for the one
+# category that empirically needs capacity.
 CATEGORY_MODEL_PREFERENCE = {
-    "sentiment_classification": "smallest",  # Tiny models handle this fine
-    "ner": "smallest",  # JSON extraction, no reasoning needed
-    "factual_knowledge": "small",  # 3B-8B models know common facts
-    "text_summarization": "small",  # 8B is sufficient for summarization
-    "math": "small",  # With Tier 0, math rarely hits API
+    "sentiment_classification": "large",  # only category where small model drops to 60%
+    "ner": "small",  # JSON extraction, no reasoning needed
+    "factual_knowledge": "small",  # small models know common facts
+    "text_summarization": "small",  # small is sufficient for summarization
+    "math": "small",  # Tier 0 handles most; small covers the rest
     "mathematical_reasoning": "small",
-    "code_generation": "large",  # Code quality scales with model size
-    "code_debugging": "large",  # Debugging benefits from larger models
-    "logical_reasoning": "large",  # Reasoning chain requires capacity
-    "deductive_reasoning": "large",
+    "code_generation": "small",  # benchmark code tasks solvable by small (verified 100%)
+    "code_debugging": "small",
+    "logical_reasoning": "small",
+    "deductive_reasoning": "small",
 }
 
 # Category-specific configurations

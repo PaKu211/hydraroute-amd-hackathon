@@ -17,6 +17,7 @@ class TokenUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    model: str = ""
 
 
 class TokenTracker:
@@ -64,6 +65,9 @@ class TokenTracker:
         task_usage.prompt_tokens += prompt_tokens
         task_usage.completion_tokens += completion_tokens
         task_usage.total_tokens += total
+        # Keep the model name on the first API call attributed to this task.
+        if not task_usage.model:
+            task_usage.model = model
 
         # Update per-model
         if model not in self.per_model:
