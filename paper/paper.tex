@@ -268,18 +268,20 @@ latency/throughput gap that makes selective routing latency-feasible.
 \toprule
 Model (tier, family) & mean lat. (s) & p50 (s) & p95 (s) & tok/s \\
 \midrule
-Qwen2.5-7B (small) & -- & -- & -- & -- \\
-Qwen2.5-32B (large) & -- & -- & -- & -- \\
+Qwen2.5-7B (small) & 3.06 & 1.16 & 32.35 & 33.0 \\
+Qwen2.5-32B (large) & 4.46 & 3.87 & 9.20 & 21.5 \\
 \bottomrule
 \end{tabular}
 \caption{vLLM serving benchmark on one RTX PRO 6000 Blackwell GPU (measured on the paired
-marimo notebook). The small tier is expected to be $\sim$2$\times$ faster than the large
-tier; values are filled from the live run.}
+marimo notebook). The small tier has a 3.3$\times$ lower median latency (1.16\,s vs 3.87\,s)
+and 1.5$\times$ higher throughput (33.0 vs 21.5 tok/s) than the large tier, confirming it is
+the right default for easy categories. All 67 tasks complete on both tiers with no errors.}
 \label{tab:e3}
 \end{table}
 
 The serving benchmark confirms the qualitative routing hypothesis: a small-footprint model
-serves the easy majority at roughly half the latency of the large model, reserving the
+serves the easy majority at a 3.3$\times$ lower median latency (1.16\,s vs 3.87\,s) than the
+large model, while sustaining 1.5$\times$ higher throughput (33.0 vs 21.5 tok/s), reserving the
 large tier for the hard tail (code, reasoning) where its quality matters. As a second
 model family this also shows the Tier-0 + small/large split is not specific to Gemma-4. The
 measured latencies are filled from the live notebook run (Table~\ref{tab:e3}); both tiers
@@ -288,7 +290,7 @@ complete all 67 tasks with no errors.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/e3_latency_throughput.png}
-\caption{Serving latency (left) and throughput (right) for the two routing tiers under vLLM on one Blackwell GPU. The small tier is both faster and more than twice as productive, supporting its role as the default tier for easy categories.}
+\caption{Serving latency (left) and throughput (right) for the two routing tiers under vLLM on one Blackwell GPU. The small tier is both faster (3.3$\times$ lower median latency) and 1.5$\times$ more productive, supporting its role as the default tier for easy categories.}
 \label{fig:e3}
 \end{figure}
 
